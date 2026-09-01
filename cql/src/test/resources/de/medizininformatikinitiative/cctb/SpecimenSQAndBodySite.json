@@ -2,66 +2,70 @@
   "version": "https://medizininformatik-initiative.de/fdpg/StructuredQuery/v3/schema",
   "display": "",
   "inclusionCriteria": [
-    [
-      {
-        "context": {
-          "code": "Specimen",
-          "system": "fdpg.mii.cds",
-          "version": "1.0.0",
-          "display": "Bioprobe"
-        },
-        "termCodes": [
+    {
+      "criteria": [
+        [
           {
-            "code": "119364003",
-            "system": "http://snomed.info/sct",
-            "version": "http://snomed.info/sct/900000000000207008/version/20220930",
-            "display": "Serum specimen"
-          }
-        ],
-        "attributeFilters": [
-          {
-            "type": "reference",
-            "attributeCode": {
-              "code": "festgestellteDiagnose",
-              "display": "Festgestellte Diagnose",
-              "system": "http://hl7.org/fhir/StructureDefinition"
+            "context": {
+              "code": "Specimen",
+              "system": "fdpg.mii.cds",
+              "version": "1.0.0",
+              "display": "Bioprobe"
             },
-            "criteria": [
+            "termCodes": [
               {
-                "termCodes": [
-                  {
-                    "code": "E13.9",
-                    "system": "http://fhir.de/CodeSystem/bfarm/icd-10-gm",
-                    "version": "2023",
-                    "display": "Sonstiger näher bezeichneter Diabetes mellitus : Ohne Komplikationen"
-                  }
-                ],
-                "context": {
-                  "code": "Diagnose",
-                  "system": "fdpg.mii.cds",
-                  "version": "1.0.0",
-                  "display": "Diagnose"
-                }
+                "code": "119364003",
+                "system": "http://snomed.info/sct",
+                "version": "http://snomed.info/sct/900000000000207008/version/20220930",
+                "display": "Serum specimen"
               }
-            ]
-          },
-          {
-            "type": "concept",
-            "attributeCode": {
-              "code": "icd-o-3",
-              "display": "icd-o-3",
-              "system": "http://hl7.org/fhir/StructureDefinition"
-            },
-            "selectedConcepts": [
+            ],
+            "attributeFilters": [
               {
-                "code": "C44.6",
-                "system": "urn:oid:2.16.840.1.113883.6.43.1",
-                "display": "Haut der oberen Extremitäten und der Schulter"
+                "type": "reference",
+                "attributeCode": {
+                  "code": "festgestellteDiagnose",
+                  "display": "Festgestellte Diagnose",
+                  "system": "http://hl7.org/fhir/StructureDefinition"
+                },
+                "criteria": [
+                  {
+                    "termCodes": [
+                      {
+                        "code": "E13.9",
+                        "system": "http://fhir.de/CodeSystem/bfarm/icd-10-gm",
+                        "version": "2023",
+                        "display": "Sonstiger näher bezeichneter Diabetes mellitus : Ohne Komplikationen"
+                      }
+                    ],
+                    "context": {
+                      "code": "Diagnose",
+                      "system": "fdpg.mii.cds",
+                      "version": "1.0.0",
+                      "display": "Diagnose"
+                    }
+                  }
+                ]
+              },
+              {
+                "type": "concept",
+                "attributeCode": {
+                  "code": "icd-o-3",
+                  "display": "icd-o-3",
+                  "system": "http://hl7.org/fhir/StructureDefinition"
+                },
+                "selectedConcepts": [
+                  {
+                    "code": "C44.6",
+                    "system": "urn:oid:2.16.840.1.113883.6.43.1",
+                    "display": "Haut der oberen Extremitäten und der Schulter"
+                  }
+                ]
               }
             ]
           }
         ]
-      }
-    ]
+      ]
+    }
   ]
 }

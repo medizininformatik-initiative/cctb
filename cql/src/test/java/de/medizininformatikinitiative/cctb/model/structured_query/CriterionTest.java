@@ -2,6 +2,7 @@ package de.medizininformatikinitiative.cctb.model.structured_query;
 
 import tools.jackson.core.JacksonException;
 import tools.jackson.databind.ObjectMapper;
+import de.medizininformatikinitiative.cctb.model.MappingContext;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 
@@ -25,6 +26,26 @@ class CriterionTest {
             assertThatThrownBy(() -> mapper.readValue("{}", Criterion.class))
                     .isInstanceOf(JacksonException.class)
                     .hasRootCauseMessage("missing JSON property: context");
+        }
+
+        @Test
+        void nowCriterion() throws JacksonException {
+            var criterion = mapper.readValue("""
+                    {"type": "now"}
+                    """, Criterion.class);
+
+            assertThat(criterion).isSameAs(NowCriterion.INSTANCE);
+        }
+
+        @Test
+        void nowCriterionIgnoresOtherProperties() throws JacksonException {
+            // a "now" criterion is recognized purely by its "type" discriminator, before context/termCodes are
+            // required - this must not throw even though context/termCodes are absent
+            var criterion = mapper.readValue("""
+                    {"type": "now", "timeRestriction": {"afterDate": "2020-01-01"}}
+                    """, Criterion.class);
+
+            assertThat(criterion).isSameAs(NowCriterion.INSTANCE);
         }
 
         @Test
@@ -257,6 +278,44 @@ class CriterionTest {
                 assertThat(referencedCriterion.timeRestriction())
                         .isEqualTo(TimeRestriction.of(LocalDate.of(2024, 11, 20), LocalDate.of(2024, 11, 20)));
             }
+        }
+    }
+
+    @Nested
+    class NowCriterionBehavior {
+
+        private static final MappingContext EMPTY_MAPPING_CONTEXT = MappingContext.of();
+
+        @Test
+        void alwaysMatches() {
+            de.medizininformatikinitiative.cctb.Assertions.assertThat(NowCriterion.INSTANCE.toCql(EMPTY_MAPPING_CONTEXT))
+                    .printsTo("""
+                            library Retrieve version '1.0.0'
+                            using FHIR version '4.0.0'
+                            include FHIRHelpers version '4.0.0'
+
+                            context Patient
+
+                            define Criterion:
+                              true
+                            """);
+        }
+
+        @Test
+        void dateValuesExprIsNow() {
+            de.medizininformatikinitiative.cctb.Assertions.assertThat(
+                            NowCriterion.INSTANCE.dateValuesExpr(EMPTY_MAPPING_CONTEXT, Group.AnchorPoint.START))
+                    .printsTo("""
+                            library Retrieve version '1.0.0'
+                            using FHIR version '4.0.0'
+                            include FHIRHelpers version '4.0.0'
+                            """);
+        }
+
+        @Test
+        void toReferencesCqlIsUnsupported() {
+            assertThatThrownBy(() -> NowCriterion.INSTANCE.toReferencesCql(EMPTY_MAPPING_CONTEXT))
+                    .isInstanceOf(UnsupportedOperationException.class);
         }
     }
 }

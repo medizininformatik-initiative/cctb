@@ -2,68 +2,76 @@
   "version": "http://to_be_decided.com/draft-1/schema#",
   "display": "",
   "inclusionCriteria": [
-    [
-      {
-        "termCodes": [
+    {
+      "criteria": [
+        [
           {
-            "code": "8-810",
-            "system": "http://fhir.de/CodeSystem/bfarm/ops",
-            "version": "2023",
-            "display": "Transfusion von Plasmabestandteilen und gentechnisch hergestellten Plasmaproteinen"
+            "termCodes": [
+              {
+                "code": "8-810",
+                "system": "http://fhir.de/CodeSystem/bfarm/ops",
+                "version": "2023",
+                "display": "Transfusion von Plasmabestandteilen und gentechnisch hergestellten Plasmaproteinen"
+              }
+            ],
+            "context": {
+              "code": "Procedure",
+              "system": "fdpg.mii.cds",
+              "version": "1.0.0",
+              "display": "Prozedur"
+            },
+            "timeRestriction": {
+              "beforeDate": "2023-11-11",
+              "afterDate": "2023-11-05"
+            }
           }
         ],
-        "context": {
-          "code": "Procedure",
-          "system": "fdpg.mii.cds",
-          "version": "1.0.0",
-          "display": "Prozedur"
-        },
-        "timeRestriction": {
-          "beforeDate": "2023-11-11",
-          "afterDate": "2023-11-05"
-        }
-      }
-    ],
-    [
-      {
-        "termCodes": [
+        [
           {
-            "code": "5-39",
-            "system": "http://fhir.de/CodeSystem/bfarm/ops",
-            "version": "2023",
-            "display": "Andere Operationen an Blutgefäßen und Zusatzinformationen zu Operationen an Blutgefäßen"
+            "termCodes": [
+              {
+                "code": "5-39",
+                "system": "http://fhir.de/CodeSystem/bfarm/ops",
+                "version": "2023",
+                "display": "Andere Operationen an Blutgefäßen und Zusatzinformationen zu Operationen an Blutgefäßen"
+              }
+            ],
+            "context": {
+              "code": "Procedure",
+              "system": "fdpg.mii.cds",
+              "version": "1.0.0",
+              "display": "Prozedur"
+            }
           }
-        ],
-        "context": {
-          "code": "Procedure",
-          "system": "fdpg.mii.cds",
-          "version": "1.0.0",
-          "display": "Prozedur"
-        }
-      }
-    ]
+        ]
+      ]
+    }
   ],
   "exclusionCriteria": [
-    [
-      {
-        "termCodes": [
+    {
+      "criteria": [
+        [
           {
-            "code": "5-45",
-            "system": "http://fhir.de/CodeSystem/bfarm/ops",
-            "version": "2023",
-            "display": "Inzision, Exzision, Resektion und Anastomose an Dünn- und Dickdarm"
+            "termCodes": [
+              {
+                "code": "5-45",
+                "system": "http://fhir.de/CodeSystem/bfarm/ops",
+                "version": "2023",
+                "display": "Inzision, Exzision, Resektion und Anastomose an Dünn- und Dickdarm"
+              }
+            ],
+            "context": {
+              "code": "Procedure",
+              "system": "fdpg.mii.cds",
+              "version": "1.0.0",
+              "display": "Prozedur"
+            },
+            "timeRestriction": {
+              "beforeDate": "2023-11-13"
+            }
           }
-        ],
-        "context": {
-          "code": "Procedure",
-          "system": "fdpg.mii.cds",
-          "version": "1.0.0",
-          "display": "Prozedur"
-        },
-        "timeRestriction": {
-          "beforeDate": "2023-11-13"
-        }
-      }
-    ]
+        ]
+      ]
+    }
   ]
 }

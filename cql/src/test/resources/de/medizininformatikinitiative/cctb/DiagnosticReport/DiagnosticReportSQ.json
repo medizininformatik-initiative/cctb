@@ -2,26 +2,30 @@
   "version": "http://to_be_decided.com/draft-1/schema#",
   "display": "Ausgewählte Merkmale",
   "inclusionCriteria": [
-    [
-      {
-        "termCodes": [
+    {
+      "criteria": [
+        [
           {
-            "code": "51969-4",
-            "display": "Genetic analysis report",
-            "system": "http://loinc.org"
+            "termCodes": [
+              {
+                "code": "51969-4",
+                "display": "Genetic analysis report",
+                "system": "http://loinc.org"
+              }
+            ],
+            "context": {
+              "code": "Molekulargenetischer Befundbericht",
+              "display": "Molekulargenetischer Befundbericht",
+              "system": "fdpg.mii.cds",
+              "version": "1.0.0"
+            },
+            "timeRestriction": {
+              "afterDate": "2022-01-01",
+              "beforeDate": "2023-01-01"
+            }
           }
-        ],
-        "context": {
-          "code": "Molekulargenetischer Befundbericht",
-          "display": "Molekulargenetischer Befundbericht",
-          "system": "fdpg.mii.cds",
-          "version": "1.0.0"
-        },
-        "timeRestriction": {
-          "afterDate": "2022-01-01",
-          "beforeDate": "2023-01-01"
-        }
-      }
-    ]
+        ]
+      ]
+    }
   ]
 }

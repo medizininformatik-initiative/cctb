@@ -2,78 +2,82 @@
   "version": "https://medizininformatik-initiative.de/fdpg/StructuredQuery/v3/schema",
   "display": "",
   "inclusionCriteria": [
-    [
-      {
-        "context": {
-          "code": "Patient",
-          "display": "Patient",
-          "system": "fdpg.mii.cds",
-          "version": "1.0.0"
-        },
-        "termCodes": [
+    {
+      "criteria": [
+        [
           {
-            "code": "263495000",
-            "display": "Geschlecht",
-            "system": "http://snomed.info/sct"
-          }
-        ],
-        "valueFilter": {
-          "type": "concept",
-          "selectedConcepts": [
-            {
-              "code": "female",
-              "system": "http://hl7.org/fhir/administrative-gender",
-              "display": "Female"
-            }
-          ]
-        }
-      }
-    ],
-    [
-      {
-        "context": {
-          "code": "Specimen",
-          "system": "fdpg.mii.cds",
-          "version": "1.0.0",
-          "display": "Bioprobe"
-        },
-        "termCodes": [
-          {
-            "code": "119364003",
-            "system": "http://snomed.info/sct",
-            "version": "http://snomed.info/sct/900000000000207008/version/20220930",
-            "display": "Serum specimen"
-          }
-        ],
-        "attributeFilters": [
-          {
-            "type": "reference",
-            "attributeCode": {
-              "code": "festgestellteDiagnose",
-              "display": "Festgestellte Diagnose",
-              "system": "http://hl7.org/fhir/StructureDefinition"
+            "context": {
+              "code": "Patient",
+              "display": "Patient",
+              "system": "fdpg.mii.cds",
+              "version": "1.0.0"
             },
-            "criteria": [
+            "termCodes": [
               {
-                "termCodes": [
-                  {
-                    "code": "E13.9",
-                    "system": "http://fhir.de/CodeSystem/bfarm/icd-10-gm",
-                    "version": "2023",
-                    "display": "Sonstiger näher bezeichneter Diabetes mellitus : Ohne Komplikationen"
-                  }
-                ],
-                "context": {
-                  "code": "Diagnose",
-                  "system": "fdpg.mii.cds",
-                  "version": "1.0.0",
-                  "display": "Diagnose"
+                "code": "263495000",
+                "display": "Geschlecht",
+                "system": "http://snomed.info/sct"
+              }
+            ],
+            "valueFilter": {
+              "type": "concept",
+              "selectedConcepts": [
+                {
+                  "code": "female",
+                  "system": "http://hl7.org/fhir/administrative-gender",
+                  "display": "Female"
                 }
+              ]
+            }
+          }
+        ],
+        [
+          {
+            "context": {
+              "code": "Specimen",
+              "system": "fdpg.mii.cds",
+              "version": "1.0.0",
+              "display": "Bioprobe"
+            },
+            "termCodes": [
+              {
+                "code": "119364003",
+                "system": "http://snomed.info/sct",
+                "version": "http://snomed.info/sct/900000000000207008/version/20220930",
+                "display": "Serum specimen"
+              }
+            ],
+            "attributeFilters": [
+              {
+                "type": "reference",
+                "attributeCode": {
+                  "code": "festgestellteDiagnose",
+                  "display": "Festgestellte Diagnose",
+                  "system": "http://hl7.org/fhir/StructureDefinition"
+                },
+                "criteria": [
+                  {
+                    "termCodes": [
+                      {
+                        "code": "E13.9",
+                        "system": "http://fhir.de/CodeSystem/bfarm/icd-10-gm",
+                        "version": "2023",
+                        "display": "Sonstiger näher bezeichneter Diabetes mellitus : Ohne Komplikationen"
+                      }
+                    ],
+                    "context": {
+                      "code": "Diagnose",
+                      "system": "fdpg.mii.cds",
+                      "version": "1.0.0",
+                      "display": "Diagnose"
+                    }
+                  }
+                ]
               }
             ]
           }
         ]
-      }
-    ]
+      ]
+    }
   ]
 }

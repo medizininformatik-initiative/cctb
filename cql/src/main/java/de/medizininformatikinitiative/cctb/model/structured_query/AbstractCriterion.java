@@ -92,7 +92,12 @@ abstract class AbstractCriterion<T extends AbstractCriterion<T>> implements Crit
 
     @Override
     public Container<DefaultExpression> toCql(MappingContext mappingContext) {
-        var expr = fullExpr(mappingContext);
+        return toCql(mappingContext, null);
+    }
+
+    @Override
+    public Container<DefaultExpression> toCql(MappingContext mappingContext, IntervalSelector relativeWindow) {
+        var expr = fullExpr(mappingContext, relativeWindow);
         if (expr.isEmpty()) {
             throw new TranslationException("Failed to expand the concept %s.".formatted(concept));
         }
@@ -110,13 +115,14 @@ abstract class AbstractCriterion<T extends AbstractCriterion<T>> implements Crit
      * Builds an OR-expression with an expression for each concept of the expansion of {@code
      * termCode}.
      */
-    private Container<DefaultExpression> fullExpr(MappingContext mappingContext) {
+    private Container<DefaultExpression> fullExpr(MappingContext mappingContext, IntervalSelector relativeWindow) {
         return mappingContext.expandConcept(concept)
-                .map(termCode -> expr(mappingContext, termCode))
+                .map(termCode -> expr(mappingContext, termCode, relativeWindow))
                 .reduce(Container.empty(), Container.OR);
     }
 
-    private Container<DefaultExpression> expr(MappingContext mappingContext, ContextualTermCode termCode) {
+    private Container<DefaultExpression> expr(MappingContext mappingContext, ContextualTermCode termCode,
+                                              IntervalSelector relativeWindow) {
         var mapping = mappingContext.findMapping(termCode)
                 .orElseThrow(() -> new MappingNotFoundException(termCode));
         switch (mapping.resourceType()) {
@@ -134,7 +140,7 @@ abstract class AbstractCriterion<T extends AbstractCriterion<T>> implements Crit
                             var whereExpr = MembershipExpression.in(referenceExpression, medicationReferencesExpr);
                             return QueryExpression.of(sourceClause, WhereClause.of(whereExpr));
                         });
-                return appendModifier(mappingContext, mapping, query).map(ExistsExpression::of);
+                return appendModifier(mappingContext, mapping, query, relativeWindow).map(ExistsExpression::of);
             }
             default -> {
                 return retrieveExpr(mappingContext, termCode).flatMap(retrieveExpr -> {
@@ -143,10 +149,79 @@ abstract class AbstractCriterion<T extends AbstractCriterion<T>> implements Crit
                     var query = valueExpr(mappingContext, mapping, alias)
                             .map(valueExpr -> QueryExpression.of(sourceClause, WhereClause.of(valueExpr)))
                             .or(() -> QueryExpression.of(sourceClause));
-                    return appendModifier(mappingContext, mapping, query).map(ExistsExpression::of);
+                    return appendModifier(mappingContext, mapping, query, relativeWindow).map(ExistsExpression::of);
                 });
             }
         }
+    }
+
+    /**
+     * Builds a CQL expression evaluating to the list of dates of every matching resource of the expansion of
+     * {@code concept}, reduced to a single point per resource via {@code anchorPoint}.
+     * <p>
+     * Reuses the same retrieve+modifiers query {@link #expr} builds, but projects the date path from {@code
+     * mapping.timeRestrictionMapping()} via a {@link ReturnClause} instead of wrapping in {@link ExistsExpression}.
+     */
+    @Override
+    public Container<DefaultExpression> dateValuesExpr(MappingContext mappingContext, Group.AnchorPoint anchorPoint) {
+        return dateValuesExpr(mappingContext, anchorPoint, null);
+    }
+
+    @Override
+    public Container<DefaultExpression> dateValuesExpr(MappingContext mappingContext, Group.AnchorPoint anchorPoint,
+                                                        IntervalSelector relativeWindow) {
+        return mappingContext.expandConcept(concept)
+                .map(termCode -> dateValueExpr(mappingContext, termCode, anchorPoint, relativeWindow))
+                .reduce(Container.empty(), Container.UNION);
+    }
+
+    private Container<DefaultExpression> dateValueExpr(MappingContext mappingContext, ContextualTermCode termCode,
+                                                        Group.AnchorPoint anchorPoint, IntervalSelector relativeWindow) {
+        var mapping = mappingContext.findMapping(termCode)
+                .orElseThrow(() -> new MappingNotFoundException(termCode));
+        var timeRestrictionMapping = mapping.timeRestrictionMapping()
+                .orElseThrow(() -> new IllegalStateException(
+                        "Missing time restriction in mapping with key %s, required to use it as an anchor."
+                                .formatted(mapping.key())));
+        return retrieveExpr(mappingContext, termCode).flatMap(retrieveExpr -> {
+            var alias = retrieveExpr.alias();
+            var sourceClause = SourceClause.of(AliasedQuerySource.of(retrieveExpr, alias));
+            var invocationExpr = InvocationExpression.of(alias, timeRestrictionMapping.path());
+            var returnClause = ReturnClause.of(dateProjectionExpr(invocationExpr, timeRestrictionMapping, anchorPoint));
+            var query = QueryExpression.of(sourceClause, returnClause);
+            return appendModifier(mappingContext, mapping, Container.of(query), relativeWindow)
+                    .map(WrapperExpression::new);
+        });
+    }
+
+    /**
+     * Casts the date path to a single, comparable value, per possible type of {@code mapping} (structurally the
+     * same per-type dispatch as {@link TimeRestrictionModifier}'s dateExpr/dateTimeExpr/instantExpr, kept
+     * duplicated here since this projects a raw value rather than building a membership check). {@code PERIOD}
+     * needs {@code anchorPoint} ({@code .start}/{@code .end}) before casting. When more than one type is possible
+     * (a polymorphic FHIR choice field), the first non-null projection is used via {@code Coalesce} - every
+     * branch is wrapped in {@code ToDate(...)} so all of them produce the same {@code System.Date} type;
+     * {@code Coalesce} requires its arguments to share one type, and {@code Period.start}/{@code .end} is
+     * {@code FHIR.dateTime}, not {@code Date}, so leaving it unwrapped fails CQL type resolution outright (a real
+     * bug found via an engine-level regression test - Blaze rejects the library with "Could not resolve call to
+     * operator Coalesce with signature (System.Date,FHIR.dateTime)" rather than merely behaving incorrectly).
+     */
+    private static Expression<?> dateProjectionExpr(InvocationExpression invocationExpr,
+                                                     Mapping.TimeRestrictionMapping mapping,
+                                                     Group.AnchorPoint anchorPoint) {
+        var point = anchorPoint == null ? Group.AnchorPoint.START : anchorPoint;
+        List<DefaultExpression> exprs = mapping.types().stream().sorted().<DefaultExpression>map(type -> switch (type) {
+            case DATE -> new WrapperExpression(FunctionInvocation.of("ToDate",
+                    List.of(TypeExpression.of(invocationExpr, "date"))));
+            case DATE_TIME -> new WrapperExpression(FunctionInvocation.of("ToDate",
+                    List.of(TypeExpression.of(invocationExpr, "dateTime"))));
+            case INSTANT -> new WrapperExpression(FunctionInvocation.of("ToDate",
+                    List.of(TypeExpression.of(invocationExpr, "instant"))));
+            case PERIOD -> new WrapperExpression(FunctionInvocation.of("ToDate", List.of(
+                    InvocationExpression.of(TypeExpression.of(invocationExpr, "Period"),
+                            point == Group.AnchorPoint.END ? "end" : "start"))));
+        }).toList();
+        return exprs.size() == 1 ? exprs.get(0) : FunctionInvocation.of("Coalesce", exprs);
     }
 
     private Container<DefaultExpression> refExpr(MappingContext mappingContext, ContextualTermCode termCode) {
@@ -158,7 +233,7 @@ abstract class AbstractCriterion<T extends AbstractCriterion<T>> implements Crit
             var query = valueExpr(mappingContext, mapping, alias)
                     .map(valueExpr -> QueryExpression.of(sourceClause, WhereClause.of(valueExpr)))
                     .or(() -> QueryExpression.of(sourceClause));
-            return appendModifier(mappingContext, mapping, query).map(WrapperExpression::new);
+            return appendModifier(mappingContext, mapping, query, null).map(WrapperExpression::new);
         });
     }
 
@@ -169,10 +244,13 @@ abstract class AbstractCriterion<T extends AbstractCriterion<T>> implements Crit
                                                     IdentifierExpression sourceAlias);
 
     /*
-     * Appends expressions from modifier criteria to the query.
+     * Appends expressions from modifier criteria to the query, including a relative time restriction's already
+     * computed window, if any (see Group#toCql), which intersects (ANDs) with any absolute per-criterion
+     * timeRestriction, matching the "intersect" rule for that interaction.
      */
     private Container<QueryExpression> appendModifier(MappingContext mappingContext, Mapping mapping,
-                                                      Container<QueryExpression> queryContainer) {
+                                                      Container<QueryExpression> queryContainer,
+                                                      IntervalSelector relativeWindow) {
         var termCodeModifier = termCodeModifier(mapping);
         var isRetrievable = mapping.termCodeMapping()
                 .map(v -> FhirModelInfo.isRetrievable(mapping.resourceType(), v.path()))
@@ -188,6 +266,14 @@ abstract class AbstractCriterion<T extends AbstractCriterion<T>> implements Crit
         }
         if (timeRestriction != null) {
             queryContainer = timeRestriction.toModifier(mapping).updateQuery(mappingContext, queryContainer);
+        }
+        if (relativeWindow != null) {
+            var relativeTimeRestrictionMapping = mapping.timeRestrictionMapping()
+                    .orElseThrow(() -> new IllegalStateException(
+                            "Missing time restriction in mapping with key %s, required to apply a relative time restriction."
+                                    .formatted(mapping.key())));
+            queryContainer = RelativeTimeRestrictionModifier.of(relativeTimeRestrictionMapping, relativeWindow)
+                    .updateQuery(mappingContext, queryContainer);
         }
         return queryContainer;
     }

@@ -4,11 +4,14 @@ import de.medizininformatikinitiative.cctb.model.MappingContext;
 import de.medizininformatikinitiative.cctb.model.cql.CodeSystemDefinition;
 import de.medizininformatikinitiative.cctb.model.cql.Container;
 import de.medizininformatikinitiative.cctb.model.cql.DefaultExpression;
-import de.medizininformatikinitiative.cctb.model.structured_query.Criterion;
+import de.medizininformatikinitiative.cctb.model.structured_query.Group;
 import de.medizininformatikinitiative.cctb.model.structured_query.StructuredQuery;
 import de.medizininformatikinitiative.cctb.model.structured_query.TranslationException;
 
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.stream.Stream;
 
 import static de.medizininformatikinitiative.cctb.model.cql.Container.AND;
 import static de.medizininformatikinitiative.cctb.model.cql.Container.AND_NOT;
@@ -58,8 +61,9 @@ public class Translator {
      *                              CQL {@link Container}
      */
     public Container<DefaultExpression> toCql(StructuredQuery structuredQuery) {
-        var inclusionExpr = inclusionExpr(structuredQuery.inclusionCriteria());
-        var exclusionExpr = exclusionExpr(structuredQuery.exclusionCriteria());
+        var allGroupsById = collectGroupsById(structuredQuery);
+        var inclusionExpr = groupsExpr(structuredQuery.inclusionCriteria(), allGroupsById, true);
+        var exclusionExpr = groupsExpr(structuredQuery.exclusionCriteria(), allGroupsById, false);
 
         return exclusionExpr.isEmpty()
                 ? inclusionExpr.moveToPatientContext("InInitialPopulation")
@@ -69,33 +73,35 @@ public class Translator {
     }
 
     /**
-     * Builds the inclusion expression as conjunctive normal form (CNF) of {@code criteria}.
-     *
-     * @param criteria a list of lists of {@link Criterion} representing a CNF
-     * @return a {@link Container} of the boolean inclusion expression together with the used {@link
-     * CodeSystemDefinition CodeSystemDefinitions}
+     * Collects every {@link Group} of {@code structuredQuery}, both inclusion and exclusion side, keyed by
+     * {@link Group#id}, so a group's {@code relativeTimeRestriction} can resolve its {@code anchorRef} regardless
+     * of which side the referenced anchor group lives on.
      */
-    private Container<DefaultExpression> inclusionExpr(List<List<Criterion>> criteria) {
-        return criteria.stream().map(this::orExpr).reduce(Container.empty(), AND);
-    }
-
-    private Container<DefaultExpression> orExpr(List<Criterion> criteria) {
-        return criteria.stream().map(c -> c.toCql(mappingContext)).reduce(Container.empty(), Container.OR);
+    private static Map<String, Group> collectGroupsById(StructuredQuery structuredQuery) {
+        var groupsById = new HashMap<String, Group>();
+        Stream.concat(structuredQuery.inclusionCriteria().stream(), structuredQuery.exclusionCriteria().stream())
+                .filter(group -> group.id() != null)
+                .forEach(group -> groupsById.put(group.id(), group));
+        return groupsById;
     }
 
     /**
-     * Builds the exclusion expression as disjunctive normal form (DNF) of {@code criteria}.
+     * Builds the boolean expression of one side (inclusion or exclusion) of a {@link StructuredQuery} as the
+     * top-level AND of its {@link Group Groups} - the top level is AND-only on both sides (see the CCDL relative
+     * time constraint draft): unchanged from before on the inclusion side, and a deliberate change on the
+     * exclusion side (previously OR-of-AND/DNF at the top level, now AND, matching a group's own criteria - which
+     * still expresses the old DNF shape - carrying the polarity that used to live at the top level).
      *
-     * @param criteria a list of lists of {@link Criterion} representing a DNF
-     * @return a {@link Container} of the boolean exclusion expression together with the used {@link
-     * CodeSystemDefinition CodeSystemDefinitions}
+     * @param groups          the groups of one side of a {@link StructuredQuery}
+     * @param allGroupsById   every group of the whole {@link StructuredQuery}, used to resolve {@code anchorRef}s
+     * @param isInclusionSide {@code true} for {@code inclusionCriteria}, {@code false} for {@code exclusionCriteria}
+     * @return a {@link Container} of the boolean expression together with the used {@link CodeSystemDefinition
+     * CodeSystemDefinitions}
      */
-    private Container<DefaultExpression> exclusionExpr(List<List<Criterion>> criteria) {
-        return criteria.stream().map(this::andExpr).reduce(Container.empty(), Container.OR);
-    }
-
-    private Container<DefaultExpression> andExpr(List<Criterion> criteria) {
-        return criteria.stream().map(c -> c.toCql(mappingContext))
+    private Container<DefaultExpression> groupsExpr(List<Group> groups, Map<String, Group> allGroupsById,
+                                                     boolean isInclusionSide) {
+        return groups.stream()
+                .map(group -> group.toCql(mappingContext, allGroupsById, isInclusionSide))
                 .reduce(Container.empty(), AND);
     }
 }

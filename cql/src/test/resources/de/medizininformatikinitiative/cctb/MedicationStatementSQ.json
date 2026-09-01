@@ -1,23 +1,27 @@
 {
   "version": "https://medizininformatik-initiative.de/fdpg/StructuredQuery/v3/schema",
   "inclusionCriteria": [
-    [
-      {
-        "context": {
-          "code": "Medikamentenverordnung",
-          "display": "Verordnung von Medikamenten",
-          "system": "fdpg.mii.cds",
-          "version": "1.0.0"
-        },
-        "termCodes": [
+    {
+      "criteria": [
+        [
           {
-            "code": "B01AB01",
-            "system": "http://fhir.de/CodeSystem/bfarm/atc",
-            "version": "2021",
-            "display": "Enoxaparin natrium"
+            "context": {
+              "code": "Medikamentenverordnung",
+              "display": "Verordnung von Medikamenten",
+              "system": "fdpg.mii.cds",
+              "version": "1.0.0"
+            },
+            "termCodes": [
+              {
+                "code": "B01AB01",
+                "system": "http://fhir.de/CodeSystem/bfarm/atc",
+                "version": "2021",
+                "display": "Enoxaparin natrium"
+              }
+            ]
           }
         ]
-      }
-    ]
+      ]
+    }
   ]
 }

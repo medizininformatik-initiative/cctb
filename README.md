@@ -15,7 +15,7 @@ var codeSystemAliases = Map.of("http://fhir.de/CodeSystem/bfarm/icd-10-gm", "icd
 var mappingContext = MappingContext.of(mappings, conceptTree, codeSystemAliases);
 
 Library library = Translator.of(mappingContext).toCql(StructuredQuery.of(List.of(
-        List.of(ConceptCriterion.of(c71_1)))));
+        Group.of(List.of(List.of(ConceptCriterion.of(c71_1)))))));
 
 assertEquals("""
         library Retrieve version '1.0.0'
@@ -34,7 +34,7 @@ assertEquals("""
 ```
 var mapper = new ObjectMapper();
 mapper.readValue("""
-        {"inclusionCriteria": [[{
+        {"inclusionCriteria": [{"criteria": [[{
           "termCodes": [{
             "system": "http://fhir.de/CodeSystem/bfarm/icd-10-gm", 
             "code": "C71.1",
@@ -61,7 +61,7 @@ mapper.readValue("""
               }
             ]
           }
-        }]]}
+        }]]}]}
         """, StructuredQuery.class);
 ```
 

@@ -11,6 +11,7 @@ import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 
 import java.math.BigDecimal;
+import java.time.Duration;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.Map;
@@ -117,7 +118,7 @@ class TranslatorTest {
 
         @Test
         void nonExpandableConcept() {
-            var structuredQuery = StructuredQuery.of(List.of(List.of(ConceptCriterion.of(ContextualConcept.of(C71)))));
+            var structuredQuery = StructuredQuery.of(List.of(Group.of(List.of(List.of(ConceptCriterion.of(ContextualConcept.of(C71)))))));
 
             var message = assertThrows(TranslationException.class, () -> Translator.of().toCql(structuredQuery)).getMessage();
 
@@ -131,9 +132,9 @@ class TranslatorTest {
             var conceptTree = createTreeWithChildren(C71, C71_0, C71_1);
             var mappingContext = MappingContext.of(Map.of(), conceptTree, CODE_SYSTEM_ALIASES);
 
+            var group = Group.of(List.of(List.of(ConceptCriterion.of(ContextualConcept.of(C71)))));
             var message = assertThrows(TranslationException.class, () -> Translator.of(mappingContext)
-                    .toCql(StructuredQuery.of(
-                            List.of(List.of(ConceptCriterion.of(ContextualConcept.of(C71))))))).getMessage();
+                    .toCql(StructuredQuery.of(List.of(group)))).getMessage();
 
             assertEquals(
                     "Failed to expand the concept ContextualConcept[context=TermCode[system=context, code=context, display=context], concept=Concept[termCodes=[TermCode[system=http://fhir.de/CodeSystem/bfarm/icd-10-gm, code=C71, display=Malignant neoplasm of brain]]]].",
@@ -151,7 +152,7 @@ class TranslatorTest {
             var mappingContext = MappingContext.of(mappings, conceptTree, codeSystemAliases);
 
             var library = Translator.of(mappingContext).toCql(
-                    StructuredQuery.of(List.of(List.of(ConceptCriterion.of(ContextualConcept.of(c71_1))))));
+                    StructuredQuery.of(List.of(Group.of(List.of(List.of(ConceptCriterion.of(ContextualConcept.of(c71_1))))))));
 
             assertThat(library).printsTo("""
                     library Retrieve version '1.0.0'
@@ -181,9 +182,9 @@ class TranslatorTest {
             var codeSystemAliases = Map.of("http://fhir.de/CodeSystem/bfarm/icd-10-gm", "icd10");
             var mappingContext = MappingContext.of(mappings, conceptTree, codeSystemAliases);
 
-            var library = Translator.of(mappingContext).toCql(StructuredQuery.of(List.of(List.of(
+            var library = Translator.of(mappingContext).toCql(StructuredQuery.of(List.of(Group.of(List.of(List.of(
                     ConceptCriterion.of(ContextualConcept.of(c71_1),
-                            TimeRestriction.of(LocalDate.of(2020, 1, 1), LocalDate.of(2020, 1, 2)))))));
+                            TimeRestriction.of(LocalDate.of(2020, 1, 1), LocalDate.of(2020, 1, 2)))))))));
 
             assertThat(library).printsTo("""
                     library Retrieve version '1.0.0'
@@ -214,8 +215,9 @@ class TranslatorTest {
             var conceptTree = createTreeWithoutChildren(c71_1);
             var codeSystemAliases = Map.of("http://fhir.de/CodeSystem/bfarm/icd-10-gm", "icd10");
             var mappingContext = MappingContext.of(mappings, conceptTree, codeSystemAliases);
-            var query = StructuredQuery.of(List.of(List.of(ConceptCriterion.of(ContextualConcept.of(c71_1),
+            var group = Group.of(List.of(List.of(ConceptCriterion.of(ContextualConcept.of(c71_1),
                     TimeRestriction.of(LocalDate.of(2020, 1, 1), LocalDate.of(2020, 1, 2))))));
+            var query = StructuredQuery.of(List.of(group));
             var translator = Translator.of(mappingContext);
 
             assertThatIllegalStateException().isThrownBy(() -> translator.toCql(query)).withMessage(
@@ -234,12 +236,13 @@ class TranslatorTest {
                     createTreeRootWithoutChildren(TMZ),
                     createTreeRootWithChildren(C71, C71_0, C71_1)));
             var mappingContext = MappingContext.of(mappings, conceptTree, CODE_SYSTEM_ALIASES);
-            var structuredQuery = StructuredQuery.of(List.of(List.of(
+            var group = Group.of(List.of(List.of(
                             ConceptCriterion.of(ContextualConcept.of(C71))
                                     .appendAttributeFilter(ValueSetAttributeFilter.of(VERIFICATION_STATUS, CONFIRMED))),
                     List.of(
                             NumericCriterion.of(ContextualConcept.of(PLATELETS), LESS_THAN, BigDecimal.valueOf(50),
                                     "g/dl")), List.of(ConceptCriterion.of(ContextualConcept.of(TMZ)))));
+            var structuredQuery = StructuredQuery.of(List.of(group));
 
             var library = Translator.of(mappingContext).toCql(structuredQuery);
 
@@ -292,11 +295,12 @@ class TranslatorTest {
                     createTreeRootWithoutChildren(SERUM),
                     createTreeRootWithoutChildren(LIPID)));
             var mappingContext = MappingContext.of(mappings, conceptTree, CODE_SYSTEM_ALIASES);
-            var structuredQuery = StructuredQuery.of(List.of(List.of(
+            var inclusionGroup = Group.of(List.of(List.of(
                                     ConceptCriterion.of(ContextualConcept.of(HYPERTENSION))
                                             .appendAttributeFilter(ValueSetAttributeFilter.of(VERIFICATION_STATUS, CONFIRMED))),
-                            List.of(ConceptCriterion.of(ContextualConcept.of(SERUM)))),
-                    List.of(List.of(ConceptCriterion.of(ContextualConcept.of(LIPID)))));
+                            List.of(ConceptCriterion.of(ContextualConcept.of(SERUM)))));
+            var exclusionGroup = Group.of(List.of(List.of(ConceptCriterion.of(ContextualConcept.of(LIPID)))));
+            var structuredQuery = StructuredQuery.of(List.of(inclusionGroup), List.of(exclusionGroup));
 
             var library = Translator.of(mappingContext).toCql(structuredQuery);
 
@@ -352,12 +356,14 @@ class TranslatorTest {
                     TOBACCO_SMOKING_STATUS, Mapping.of(TOBACCO_SMOKING_STATUS, "Observation", Mapping.PathMapping.of("value", Mapping.PathMapping.Type.CODEABLE_CONCEPT)));
             var conceptTree = new MappingTreeBase(List.of(createTreeRootWithoutChildren(COPD), createTreeRootWithoutChildren(G47_31)));
             var mappingContext = MappingContext.of(mappings, conceptTree, CODE_SYSTEM_ALIASES);
-            var structuredQuery = StructuredQuery.of(
-                    List.of(List.of(ValueSetCriterion.of(ContextualConcept.of(FRAILTY_SCORE), VERY_FIT, WELL))),
+            var inclusionGroup = Group.of(
+                    List.of(List.of(ValueSetCriterion.of(ContextualConcept.of(FRAILTY_SCORE), VERY_FIT, WELL))));
+            var exclusionGroup = Group.of(
                     List.of(List.of(ConceptCriterion.of(ContextualConcept.of(COPD)),
                             ConceptCriterion.of(ContextualConcept.of(G47_31))), List.of(
                             ValueSetCriterion.of(ContextualConcept.of(TOBACCO_SMOKING_STATUS),
                                     CURRENT_EVERY_DAY_SMOKER))));
+            var structuredQuery = StructuredQuery.of(List.of(inclusionGroup), List.of(exclusionGroup));
 
             var library = Translator.of(mappingContext).toCql(structuredQuery);
 
@@ -470,22 +476,26 @@ class TranslatorTest {
                       "version": "https://medizininformatik-initiative.de/fdpg/StructuredQuery/v3/schema",
                       "display": "",
                       "inclusionCriteria": [
-                        [
-                          {
-                            "context": {
-                                "code": "context",
-                                "display": "context",
-                                "system": "context"
-                            },
-                            "termCodes": [
+                        {
+                          "criteria": [
+                            [
                               {
-                                "code": "combined-consent",
-                                "system": "mii.abide",
-                                "display": "Einwilligung für die zentrale Datenanalyse"
+                                "context": {
+                                    "code": "context",
+                                    "display": "context",
+                                    "system": "context"
+                                },
+                                "termCodes": [
+                                  {
+                                    "code": "combined-consent",
+                                    "system": "mii.abide",
+                                    "display": "Einwilligung für die zentrale Datenanalyse"
+                                  }
+                                ]
                               }
                             ]
-                          }
-                        ]
+                          ]
+                        }
                       ]
                     }
                     """);
@@ -542,32 +552,36 @@ class TranslatorTest {
                       "version": "https://medizininformatik-initiative.de/fdpg/StructuredQuery/v3/schema",
                       "display": "",
                       "inclusionCriteria": [
-                        [
-                          {
-                            "context": {
-                                "code": "context",
-                                "display": "context",
-                                "system": "context"
-                            },
-                            "termCodes": [
+                        {
+                          "criteria": [
+                            [
                               {
-                                "code": "424144002",
-                                "system": "http://snomed.info/sct",
-                                "display": "Current chronological age"
+                                "context": {
+                                  "code": "context",
+                                  "display": "context",
+                                  "system": "context"
+                                },
+                                "termCodes": [
+                                  {
+                                    "code": "424144002",
+                                    "system": "http://snomed.info/sct",
+                                    "display": "Current chronological age"
+                                  }
+                                ],
+                                "valueFilter": {
+                                  "selectedConcepts": [],
+                                  "type": "quantity-comparator",
+                                  "unit": {
+                                    "code": "a",
+                                    "display": "a"
+                                  },
+                                  "value": 5,
+                                  "comparator": "gt"
+                                }
                               }
-                            ],
-                            "valueFilter": {
-                              "selectedConcepts": [],
-                              "type": "quantity-comparator",
-                              "unit": {
-                                "code": "a",
-                                "display": "a"
-                              },
-                              "value": 5,
-                              "comparator": "gt"
-                            }
-                          }
-                        ]
+                            ]
+                          ]
+                        }
                       ]
                     }
                     """);
@@ -619,32 +633,36 @@ class TranslatorTest {
                       "version": "https://medizininformatik-initiative.de/fdpg/StructuredQuery/v3/schema",
                       "display": "",
                       "inclusionCriteria": [
-                        [
-                          {
-                            "context": {
-                                "code": "context",
-                                "display": "context",
-                                "system": "context"
-                            },
-                            "termCodes": [
+                        {
+                          "criteria": [
+                            [
                               {
-                                "code": "424144002",
-                                "system": "http://snomed.info/sct",
-                                "display": "Current chronological age"
+                                "context": {
+                                  "code": "context",
+                                  "display": "context",
+                                  "system": "context"
+                                },
+                                "termCodes": [
+                                  {
+                                    "code": "424144002",
+                                    "system": "http://snomed.info/sct",
+                                    "display": "Current chronological age"
+                                  }
+                                ],
+                                "valueFilter": {
+                                  "selectedConcepts": [],
+                                  "type": "quantity-range",
+                                  "unit": {
+                                    "code": "a",
+                                    "display": "a"
+                                  },
+                                  "minValue": 5,
+                                  "maxValue": 10
+                                }
                               }
-                            ],
-                            "valueFilter": {
-                              "selectedConcepts": [],
-                              "type": "quantity-range",
-                              "unit": {
-                                "code": "a",
-                                "display": "a"
-                              },
-                              "minValue": 5,
-                              "maxValue": 10
-                            }
-                          }
-                        ]
+                            ]
+                          ]
+                        }
                       ]
                     }
                     """);
@@ -696,32 +714,36 @@ class TranslatorTest {
                       "version": "https://medizininformatik-initiative.de/fdpg/StructuredQuery/v3/schema",
                       "display": "",
                       "inclusionCriteria": [
-                        [
-                          {
-                            "context": {
-                                "code": "context",
-                                "display": "context",
-                                "system": "context"
-                            },
-                            "termCodes": [
+                        {
+                          "criteria": [
+                            [
                               {
-                                "code": "424144002",
-                                "system": "http://snomed.info/sct",
-                                "display": "Current chronological age"
+                                "context": {
+                                  "code": "context",
+                                  "display": "context",
+                                  "system": "context"
+                                },
+                                "termCodes": [
+                                  {
+                                    "code": "424144002",
+                                    "system": "http://snomed.info/sct",
+                                    "display": "Current chronological age"
+                                  }
+                                ],
+                                "valueFilter": {
+                                  "selectedConcepts": [],
+                                  "type": "quantity-comparator",
+                                  "unit": {
+                                    "code": "h",
+                                    "display": "h"
+                                  },
+                                  "value": 5,
+                                  "comparator": "lt"
+                                }
                               }
-                            ],
-                            "valueFilter": {
-                              "selectedConcepts": [],
-                              "type": "quantity-comparator",
-                              "unit": {
-                                "code": "h",
-                                "display": "h"
-                              },
-                              "value": 5,
-                              "comparator": "lt"
-                            }
-                          }
-                        ]
+                            ]
+                          ]
+                        }
                       ]
                     }
                     """);
@@ -775,32 +797,36 @@ class TranslatorTest {
                       "version": "https://medizininformatik-initiative.de/fdpg/StructuredQuery/v3/schema",
                       "display": "",
                       "inclusionCriteria": [
-                        [
-                          {
-                            "context": {
-                                "code": "context",
-                                "display": "context",
-                                "system": "context"
-                            },
-                            "termCodes": [
+                        {
+                          "criteria": [
+                            [
                               {
-                                "code": "263495000",
-                                "display": "Geschlecht",
-                                "system": "http://snomed.info/sct"
-                              }
-                            ],
-                            "valueFilter": {
-                              "type": "concept",
-                              "selectedConcepts": [
-                                {
-                                  "code": "female",
-                                  "system": "http://hl7.org/fhir/administrative-gender",
-                                  "display": "Female"
+                                "context": {
+                                  "code": "context",
+                                  "display": "context",
+                                  "system": "context"
+                                },
+                                "termCodes": [
+                                  {
+                                    "code": "263495000",
+                                    "display": "Geschlecht",
+                                    "system": "http://snomed.info/sct"
+                                  }
+                                ],
+                                "valueFilter": {
+                                  "type": "concept",
+                                  "selectedConcepts": [
+                                    {
+                                      "code": "female",
+                                      "system": "http://hl7.org/fhir/administrative-gender",
+                                      "display": "Female"
+                                    }
+                                  ]
                                 }
-                              ]
-                            }
-                          }
-                        ]
+                              }
+                            ]
+                          ]
+                        }
                       ]
                     }
                     """);
@@ -857,23 +883,27 @@ class TranslatorTest {
                       "version": "http://to_be_decided.com/draft-1/schema#",
                       "display": "",
                       "inclusionCriteria": [
-                        [
-                          {
-                            "context": {
-                              "code": "Einwilligung",
-                              "display": "Einwilligung",
-                              "system": "fdpg.mii.cds",
-                              "version": "1.0.0"
-                            },
-                            "termCodes": [
+                        {
+                          "criteria": [
+                            [
                               {
-                                "code": "2.16.840.1.113883.3.1937.777.24.5.3.8",
-                                "display": "MDAT wissenschaftlich nutzen EU DSGVO NIVEAU",
-                                "system": "urn:oid:2.16.840.1.113883.3.1937.777.24.5.3"
+                                "context": {
+                                  "code": "Einwilligung",
+                                  "display": "Einwilligung",
+                                  "system": "fdpg.mii.cds",
+                                  "version": "1.0.0"
+                                },
+                                "termCodes": [
+                                  {
+                                    "code": "2.16.840.1.113883.3.1937.777.24.5.3.8",
+                                    "display": "MDAT wissenschaftlich nutzen EU DSGVO NIVEAU",
+                                    "system": "urn:oid:2.16.840.1.113883.3.1937.777.24.5.3"
+                                  }
+                                ]
                               }
                             ]
-                          }
-                        ]
+                          ]
+                        }
                       ]
                     }
                     """);
@@ -933,24 +963,28 @@ class TranslatorTest {
                       "version": "http://to_be_decided.com/draft-1/schema#",
                       "display": "",
                       "inclusionCriteria": [
-                        [
-                          {
-                            "context": {
-                              "code": "Fall",
-                              "display": "Fall",
-                              "system": "fdpg.mii.cds",
-                              "version": "1.0.0"
-                            },
-                            "termCodes": [
+                        {
+                          "criteria": [
+                            [
                               {
-                                "code": "VR",
-                                "display": "virtual",
-                                "system": "http://terminology.hl7.org/CodeSystem/v3-ActCode",
-                                "version": "9.0.0"
+                                "context": {
+                                  "code": "Fall",
+                                  "display": "Fall",
+                                  "system": "fdpg.mii.cds",
+                                  "version": "1.0.0"
+                                },
+                                "termCodes": [
+                                  {
+                                    "code": "VR",
+                                    "display": "virtual",
+                                    "system": "http://terminology.hl7.org/CodeSystem/v3-ActCode",
+                                    "version": "9.0.0"
+                                  }
+                                ]
                               }
                             ]
-                          }
-                        ]
+                          ]
+                        }
                       ]
                     }
                     """);
@@ -1012,38 +1046,42 @@ class TranslatorTest {
                       "version": "https://medizininformatik-initiative.de/fdpg/StructuredQuery/v3/schema",
                       "display": "",
                       "inclusionCriteria": [
-                        [
-                          {
-                            "context": {
-                              "code": "Laboruntersuchung",
-                              "display": "Laboruntersuchung",
-                              "system": "fdpg.mii.cds",
-                              "version": "1.0.0"
-                            },
-                            "termCodes": [
+                        {
+                          "criteria": [
+                            [
                               {
-                                "system": "http://loinc.org",
-                                "code": "85354-9",
-                                "display": "Blood pressure panel with all children optional"
-                              }
-                            ],
-                            "attributeFilters": [
-                              {
-                                "attributeCode": {
-                                  "system": "http://loinc.org",
-                                  "code": "8462-4",
-                                  "display": "Diastolic blood pressure"
+                                "context": {
+                                  "code": "Laboruntersuchung",
+                                  "display": "Laboruntersuchung",
+                                  "system": "fdpg.mii.cds",
+                                  "version": "1.0.0"
                                 },
-                                "type": "quantity-comparator",
-                                "comparator": "lt",
-                                "value": 80,
-                                "unit": {
-                                  "code": "mm[Hg]"
-                                }
+                                "termCodes": [
+                                  {
+                                    "system": "http://loinc.org",
+                                    "code": "85354-9",
+                                    "display": "Blood pressure panel with all children optional"
+                                  }
+                                ],
+                                "attributeFilters": [
+                                  {
+                                    "attributeCode": {
+                                      "system": "http://loinc.org",
+                                      "code": "8462-4",
+                                      "display": "Diastolic blood pressure"
+                                    },
+                                    "type": "quantity-comparator",
+                                    "comparator": "lt",
+                                    "value": 80,
+                                    "unit": {
+                                      "code": "mm[Hg]"
+                                    }
+                                  }
+                                ]
                               }
                             ]
-                          }
-                        ]
+                          ]
+                        }
                       ]
                     }
                     """);
@@ -1076,7 +1114,7 @@ class TranslatorTest {
 
             @Test
             void oneDisjunctionWithOneCriterion() {
-                var structuredQuery = StructuredQuery.of(List.of(List.of(Criterion.TRUE)));
+                var structuredQuery = StructuredQuery.of(List.of(Group.of(List.of(List.of(Criterion.TRUE)))));
 
                 var library = Translator.of().toCql(structuredQuery);
 
@@ -1093,7 +1131,7 @@ class TranslatorTest {
 
             @Test
             void oneDisjunctionWithTwoCriteria() {
-                var structuredQuery = StructuredQuery.of(List.of(List.of(Criterion.TRUE, Criterion.FALSE)));
+                var structuredQuery = StructuredQuery.of(List.of(Group.of(List.of(List.of(Criterion.TRUE, Criterion.FALSE)))));
 
                 var library = Translator.of().toCql(structuredQuery);
 
@@ -1114,19 +1152,19 @@ class TranslatorTest {
 
             @Test
             void twoDisjunctionsWithOneCriterionEach() {
-                var structuredQuery = StructuredQuery.of(List.of(List.of(Criterion.TRUE), List.of(Criterion.FALSE)));
+                var structuredQuery = StructuredQuery.of(List.of(Group.of(List.of(List.of(Criterion.TRUE), List.of(Criterion.FALSE)))));
 
                 var library = Translator.of().toCql(structuredQuery);
 
                 assertThat(library).patientContextPrintsTo("""
                         context Patient
-                        
+
                         define "Criterion 1":
                           true
-                        
+
                         define "Criterion 2":
                           false
-                        
+
                         define InInitialPopulation:
                           "Criterion 1" and
                           "Criterion 2"
@@ -1135,8 +1173,8 @@ class TranslatorTest {
 
             @Test
             void twoDisjunctionsWithTwoCriterionEach() {
-                var structuredQuery = StructuredQuery.of(List.of(List.of(Criterion.TRUE, Criterion.TRUE),
-                        List.of(Criterion.FALSE, Criterion.FALSE)));
+                var structuredQuery = StructuredQuery.of(List.of(Group.of(List.of(List.of(Criterion.TRUE, Criterion.TRUE),
+                        List.of(Criterion.FALSE, Criterion.FALSE)))));
 
                 var library = Translator.of().toCql(structuredQuery);
 
@@ -1169,7 +1207,8 @@ class TranslatorTest {
 
             @Test
             void oneConjunctionWithOneCriterion() {
-                var structuredQuery = StructuredQuery.of(List.of(List.of(Criterion.TRUE)), List.of(List.of(Criterion.FALSE)));
+                var structuredQuery = StructuredQuery.of(List.of(Group.of(List.of(List.of(Criterion.TRUE)))),
+                        List.of(Group.of(List.of(List.of(Criterion.FALSE)))));
 
                 var library = Translator.of().toCql(structuredQuery);
 
@@ -1196,8 +1235,8 @@ class TranslatorTest {
 
             @Test
             void oneConjunctionWithTwoCriteria() {
-                var structuredQuery = StructuredQuery.of(List.of(List.of(Criterion.TRUE)),
-                        List.of(List.of(Criterion.FALSE, Criterion.FALSE)));
+                var structuredQuery = StructuredQuery.of(List.of(Group.of(List.of(List.of(Criterion.TRUE)))),
+                        List.of(Group.of(List.of(List.of(Criterion.FALSE, Criterion.FALSE)))));
 
                 var library = Translator.of().toCql(structuredQuery);
 
@@ -1228,8 +1267,8 @@ class TranslatorTest {
 
             @Test
             void twoConjunctionsWithOneCriterionEach() {
-                var structuredQuery = StructuredQuery.of(List.of(List.of(Criterion.TRUE)),
-                        List.of(List.of(Criterion.TRUE), List.of(Criterion.FALSE)));
+                var structuredQuery = StructuredQuery.of(List.of(Group.of(List.of(List.of(Criterion.TRUE)))),
+                        List.of(Group.of(List.of(List.of(Criterion.TRUE), List.of(Criterion.FALSE)))));
 
 
                 var library = Translator.of().toCql(structuredQuery);
@@ -1261,9 +1300,9 @@ class TranslatorTest {
 
             @Test
             void twoConjunctionsWithTwoCriterionEach() {
-                var structuredQuery = StructuredQuery.of(List.of(List.of(Criterion.TRUE)),
-                        List.of(List.of(Criterion.FALSE, Criterion.FALSE),
-                                List.of(Criterion.FALSE, Criterion.FALSE)));
+                var structuredQuery = StructuredQuery.of(List.of(Group.of(List.of(List.of(Criterion.TRUE)))),
+                        List.of(Group.of(List.of(List.of(Criterion.FALSE, Criterion.FALSE),
+                                List.of(Criterion.FALSE, Criterion.FALSE)))));
 
                 var library = Translator.of().toCql(structuredQuery);
 
@@ -1302,8 +1341,8 @@ class TranslatorTest {
 
             @Test
             void twoInclusionAndTwoExclusionCriteria() {
-                var structuredQuery = StructuredQuery.of(List.of(List.of(Criterion.TRUE), List.of(Criterion.FALSE)),
-                        List.of(List.of(Criterion.TRUE, Criterion.FALSE)));
+                var structuredQuery = StructuredQuery.of(List.of(Group.of(List.of(List.of(Criterion.TRUE), List.of(Criterion.FALSE)))),
+                        List.of(Group.of(List.of(List.of(Criterion.TRUE, Criterion.FALSE)))));
 
                 var library = Translator.of().toCql(structuredQuery);
 
@@ -1416,6 +1455,431 @@ class TranslatorTest {
                        """);
             }
 
+        }
+
+        @Nested
+        class RelativeTimeRestrictions {
+
+            private static final ContextualTermCode DIAGNOSIS = ContextualTermCode.of(CONTEXT,
+                    TermCode.of("http://fhir.de/CodeSystem/bfarm/icd-10-gm", "F00", "Demenz bei Alzheimer-Krankheit"));
+            private static final ContextualTermCode CRP = ContextualTermCode.of(CONTEXT,
+                    TermCode.of("http://loinc.org", "1988-5", "C-reaktives Protein"));
+            private static final ContextualTermCode LEUKOCYTES = ContextualTermCode.of(CONTEXT,
+                    TermCode.of("http://loinc.org", "6690-2", "Leukozyten"));
+            private static final ContextualTermCode HEMOGLOBIN = ContextualTermCode.of(CONTEXT,
+                    TermCode.of("http://loinc.org", "718-7", "Hemoglobin [Mass/volume] in Blood"));
+
+            private static MappingContext mappingContext(ContextualTermCode... termCodes) {
+                var diagnosisMapping = Mapping.of(DIAGNOSIS, "Condition", null, List.of(), List.of(),
+                        Mapping.TimeRestrictionMapping.of("onset", DATE_TIME));
+                var crpMapping = Mapping.of(CRP, "Observation", null, List.of(), List.of(),
+                        Mapping.TimeRestrictionMapping.of("effective", DATE_TIME));
+                var leukocytesMapping = Mapping.of(LEUKOCYTES, "Observation", null, List.of(), List.of(),
+                        Mapping.TimeRestrictionMapping.of("effective", DATE_TIME));
+                var mappings = Map.of(DIAGNOSIS, diagnosisMapping, CRP, crpMapping, LEUKOCYTES, leukocytesMapping);
+                var conceptTree = new MappingTreeBase(List.of(createTreeRootWithoutChildren(DIAGNOSIS),
+                        createTreeRootWithoutChildren(CRP), createTreeRootWithoutChildren(LEUKOCYTES)));
+                return MappingContext.of(mappings, conceptTree, CODE_SYSTEM_ALIASES);
+            }
+
+            @Test
+            void simpleAnchorAndOneDependent() {
+                var anchor = Group.of("anchor-dementia-diagnosis",
+                        List.of(List.of(ConceptCriterion.of(ContextualConcept.of(DIAGNOSIS)))),
+                        Group.AnchorOccurrence.FIRST);
+                var dependent = Group.of("group-crp-before-diagnosis",
+                        List.of(List.of(ConceptCriterion.of(ContextualConcept.of(CRP)))),
+                        RelativeTimeRestriction.of("anchor-dementia-diagnosis", Duration.ofHours(-72), Duration.ZERO));
+                var structuredQuery = StructuredQuery.of(List.of(anchor, dependent));
+
+                var library = Translator.of(mappingContext(DIAGNOSIS, CRP)).toCql(structuredQuery);
+
+                assertThat(library).printsTo("""
+                        library Retrieve version '1.0.0'
+                        using FHIR version '4.0.0'
+                        include FHIRHelpers version '4.0.0'
+
+                        codesystem icd10: 'http://fhir.de/CodeSystem/bfarm/icd-10-gm'
+                        codesystem loinc: 'http://loinc.org'
+
+                        context Patient
+
+                        define "Criterion 1":
+                          exists [Condition: Code 'F00' from icd10]
+
+                        define "AnchorDate_anchor-dementia-diagnosis":
+                          Min(from [Condition: Code 'F00' from icd10] C
+                            return ToDate(C.onset as dateTime))
+
+                        define "Criterion 2":
+                          exists (from [Observation: Code '1988-5' from loinc] O
+                            where ToDate(O.effective as dateTime) in Interval["AnchorDate_anchor-dementia-diagnosis" + -72 hours, "AnchorDate_anchor-dementia-diagnosis" + 0 hours])
+
+                        define InInitialPopulation:
+                          "Criterion 1" and
+                          "Criterion 2"
+                        """);
+            }
+
+            @Test
+            void fanOutTwoDependentsOnOneAnchor() {
+                var anchor = Group.of("anchor-dementia-diagnosis",
+                        List.of(List.of(ConceptCriterion.of(ContextualConcept.of(DIAGNOSIS)))),
+                        Group.AnchorOccurrence.FIRST);
+                var dependent1 = Group.of("group-crp-before-diagnosis",
+                        List.of(List.of(ConceptCriterion.of(ContextualConcept.of(CRP)))),
+                        RelativeTimeRestriction.of("anchor-dementia-diagnosis", Duration.ofHours(-72), Duration.ZERO));
+                var dependent2 = Group.of("group-leukocytes-before-diagnosis",
+                        List.of(List.of(ConceptCriterion.of(ContextualConcept.of(LEUKOCYTES)))),
+                        RelativeTimeRestriction.of("anchor-dementia-diagnosis", Duration.ofHours(-72), Duration.ZERO));
+                var structuredQuery = StructuredQuery.of(List.of(anchor, dependent1, dependent2));
+
+                var library = Translator.of(mappingContext(DIAGNOSIS, CRP, LEUKOCYTES)).toCql(structuredQuery);
+
+                // Each dependent now resolves its own anchor date exactly once (see AnchorDate_... defines below)
+                // instead of twice (one copy per bound). Across dependents, though, it is still NOT fully shared:
+                // the two "AnchorDate_anchor-dementia-diagnosis" defines get suffixed apart (`1`/`2`) rather than
+                // collapsed into one, because Container's combiner treats any same-name collision between two
+                // independently-built containers as needing disambiguation, not as a candidate for content-based
+                // dedup - a deeper fix than the per-dependent one applied here.
+                assertThat(library).printsTo("""
+                        library Retrieve version '1.0.0'
+                        using FHIR version '4.0.0'
+                        include FHIRHelpers version '4.0.0'
+
+                        codesystem icd10: 'http://fhir.de/CodeSystem/bfarm/icd-10-gm'
+                        codesystem loinc: 'http://loinc.org'
+
+                        context Patient
+
+                        define "Criterion 1":
+                          exists [Condition: Code 'F00' from icd10]
+
+                        define "AnchorDate_anchor-dementia-diagnosis 1":
+                          Min(from [Condition: Code 'F00' from icd10] C
+                            return ToDate(C.onset as dateTime))
+
+                        define "Criterion 2":
+                          exists (from [Observation: Code '1988-5' from loinc] O
+                            where ToDate(O.effective as dateTime) in Interval["AnchorDate_anchor-dementia-diagnosis 1" + -72 hours, "AnchorDate_anchor-dementia-diagnosis 1" + 0 hours])
+
+                        define "AnchorDate_anchor-dementia-diagnosis 2":
+                          Min(from [Condition: Code 'F00' from icd10] C
+                            return ToDate(C.onset as dateTime))
+
+                        define "Criterion 3":
+                          exists (from [Observation: Code '6690-2' from loinc] O
+                            where ToDate(O.effective as dateTime) in Interval["AnchorDate_anchor-dementia-diagnosis 2" + -72 hours, "AnchorDate_anchor-dementia-diagnosis 2" + 0 hours])
+
+                        define InInitialPopulation:
+                          "Criterion 1" and
+                          "Criterion 2" and
+                          "Criterion 3"
+                        """);
+            }
+
+            @Test
+            void nowAnchor() {
+                var anchor = Group.of("anchor-now", NowCriterion.INSTANCE);
+                var dependent = Group.of("group-crp-since-now",
+                        List.of(List.of(ConceptCriterion.of(ContextualConcept.of(CRP)))),
+                        RelativeTimeRestriction.of("anchor-now", Duration.ofHours(-168), Duration.ZERO));
+                var structuredQuery = StructuredQuery.of(List.of(anchor, dependent));
+
+                var library = Translator.of(mappingContext(DIAGNOSIS, CRP)).toCql(structuredQuery);
+
+                assertThat(library).printsTo("""
+                        library Retrieve version '1.0.0'
+                        using FHIR version '4.0.0'
+                        include FHIRHelpers version '4.0.0'
+
+                        codesystem loinc: 'http://loinc.org'
+
+                        context Patient
+
+                        define "Criterion 1":
+                          true
+
+                        define "AnchorDate_anchor-now":
+                          Min({ Now() })
+
+                        define "Criterion 2":
+                          exists (from [Observation: Code '1988-5' from loinc] O
+                            where ToDate(O.effective as dateTime) in Interval["AnchorDate_anchor-now" + -168 hours, "AnchorDate_anchor-now" + 0 hours])
+
+                        define InInitialPopulation:
+                          "Criterion 1" and
+                          "Criterion 2"
+                        """);
+            }
+
+            @Test
+            void openEndedMinOffsetOnly() {
+                var anchor = Group.of("anchor-dementia-diagnosis",
+                        List.of(List.of(ConceptCriterion.of(ContextualConcept.of(DIAGNOSIS)))),
+                        Group.AnchorOccurrence.FIRST);
+                var dependent = Group.of("group-crp-since-diagnosis",
+                        List.of(List.of(ConceptCriterion.of(ContextualConcept.of(CRP)))),
+                        RelativeTimeRestriction.of("anchor-dementia-diagnosis", Duration.ofHours(-168), null));
+                var structuredQuery = StructuredQuery.of(List.of(anchor, dependent));
+
+                var library = Translator.of(mappingContext(DIAGNOSIS, CRP)).toCql(structuredQuery);
+
+                assertThat(library).printsTo("""
+                        library Retrieve version '1.0.0'
+                        using FHIR version '4.0.0'
+                        include FHIRHelpers version '4.0.0'
+
+                        codesystem icd10: 'http://fhir.de/CodeSystem/bfarm/icd-10-gm'
+                        codesystem loinc: 'http://loinc.org'
+
+                        context Patient
+
+                        define "Criterion 1":
+                          exists [Condition: Code 'F00' from icd10]
+
+                        define "AnchorDate_anchor-dementia-diagnosis":
+                          Min(from [Condition: Code 'F00' from icd10] C
+                            return ToDate(C.onset as dateTime))
+
+                        define "Criterion 2":
+                          exists (from [Observation: Code '1988-5' from loinc] O
+                            where ToDate(O.effective as dateTime) in Interval["AnchorDate_anchor-dementia-diagnosis" + -168 hours, @9999-12-31T])
+
+                        define InInitialPopulation:
+                          "Criterion 1" and
+                          "Criterion 2"
+                        """);
+            }
+
+            @Test
+            void openEndedMaxOffsetOnly() {
+                var anchor = Group.of("anchor-dementia-diagnosis",
+                        List.of(List.of(ConceptCriterion.of(ContextualConcept.of(DIAGNOSIS)))),
+                        Group.AnchorOccurrence.FIRST);
+                var dependent = Group.of("group-crp-after-diagnosis",
+                        List.of(List.of(ConceptCriterion.of(ContextualConcept.of(CRP)))),
+                        RelativeTimeRestriction.of("anchor-dementia-diagnosis", null, Duration.ofHours(720)));
+                var structuredQuery = StructuredQuery.of(List.of(anchor, dependent));
+
+                var library = Translator.of(mappingContext(DIAGNOSIS, CRP)).toCql(structuredQuery);
+
+                assertThat(library).printsTo("""
+                        library Retrieve version '1.0.0'
+                        using FHIR version '4.0.0'
+                        include FHIRHelpers version '4.0.0'
+
+                        codesystem icd10: 'http://fhir.de/CodeSystem/bfarm/icd-10-gm'
+                        codesystem loinc: 'http://loinc.org'
+
+                        context Patient
+
+                        define "Criterion 1":
+                          exists [Condition: Code 'F00' from icd10]
+
+                        define "AnchorDate_anchor-dementia-diagnosis":
+                          Min(from [Condition: Code 'F00' from icd10] C
+                            return ToDate(C.onset as dateTime))
+
+                        define "Criterion 2":
+                          exists (from [Observation: Code '1988-5' from loinc] O
+                            where ToDate(O.effective as dateTime) in Interval[@0001-01-01T, "AnchorDate_anchor-dementia-diagnosis" + 720 hours])
+
+                        define InInitialPopulation:
+                          "Criterion 1" and
+                          "Criterion 2"
+                        """);
+            }
+
+            @Test
+            void chainedAnchors() {
+                var anchorNow = Group.of("anchor-now", NowCriterion.INSTANCE);
+                var middle = Group.of("group-diagnosis-since-now",
+                        List.of(List.of(ConceptCriterion.of(ContextualConcept.of(DIAGNOSIS)))),
+                        RelativeTimeRestriction.of("anchor-now", Duration.ofHours(-720), null),
+                        Group.AnchorOccurrence.LAST);
+                var dependent = Group.of("group-crp-before-diagnosis",
+                        List.of(List.of(ConceptCriterion.of(ContextualConcept.of(CRP)))),
+                        RelativeTimeRestriction.of("group-diagnosis-since-now", Duration.ofHours(-24), Duration.ZERO));
+                var structuredQuery = StructuredQuery.of(List.of(anchorNow, middle, dependent));
+
+                var library = Translator.of(mappingContext(DIAGNOSIS, CRP)).toCql(structuredQuery);
+
+                // The chain resolves "anchor-now" once per independently-built container (its own define, deduped
+                // within each), but "group-diagnosis-since-now" (the middle group) needs it twice - once for its
+                // own Criterion 2 existence check, once when it is itself resolved as the dependent's anchor -
+                // which are two separately-built containers, so (per the same cross-container limitation noted in
+                // fanOutTwoDependentsOnOneAnchor) "AnchorDate_anchor-now" ends up suffixed apart (`1`/`2`) rather
+                // than shared.
+                assertThat(library).printsTo("""
+                        library Retrieve version '1.0.0'
+                        using FHIR version '4.0.0'
+                        include FHIRHelpers version '4.0.0'
+
+                        codesystem icd10: 'http://fhir.de/CodeSystem/bfarm/icd-10-gm'
+                        codesystem loinc: 'http://loinc.org'
+
+                        context Patient
+
+                        define "Criterion 1":
+                          true
+
+                        define "AnchorDate_anchor-now 1":
+                          Min({ Now() })
+
+                        define "Criterion 2":
+                          exists (from [Condition: Code 'F00' from icd10] C
+                            where ToDate(C.onset as dateTime) in Interval["AnchorDate_anchor-now 1" + -720 hours, @9999-12-31T])
+
+                        define "AnchorDate_anchor-now 2":
+                          Min({ Now() })
+
+                        define "AnchorDate_group-diagnosis-since-now":
+                          Max(from [Condition: Code 'F00' from icd10] C
+                            where ToDate(C.onset as dateTime) in Interval["AnchorDate_anchor-now 2" + -720 hours, @9999-12-31T]
+                            return ToDate(C.onset as dateTime))
+
+                        define "Criterion 3":
+                          exists (from [Observation: Code '1988-5' from loinc] O
+                            where ToDate(O.effective as dateTime) in Interval["AnchorDate_group-diagnosis-since-now" + -24 hours, "AnchorDate_group-diagnosis-since-now" + 0 hours])
+
+                        define InInitialPopulation:
+                          "Criterion 1" and
+                          "Criterion 2" and
+                          "Criterion 3"
+                        """);
+            }
+
+            /**
+             * Regression test for a real bug found via external review of the generated CQL: an anchor whose
+             * mapping can be {@code PERIOD}-typed (a real, common case - e.g. {@code Procedure.performed}) needs
+             * its {@code .start}/{@code .end} access parenthesized around the {@code as Period} cast. See
+             * {@link de.medizininformatikinitiative.cctb.model.cql.InvocationExpressionTest} for the isolated
+             * AST-level regression test; this one proves it end to end through the real translation path, which
+             * no other {@code RelativeTimeRestrictions} test above exercises (they're all {@code DATE_TIME}-only
+             * anchors).
+             */
+            @Test
+            void periodTypedAnchorPoint() {
+                var procedure = ContextualTermCode.of(CONTEXT,
+                        TermCode.of("http://fhir.de/CodeSystem/bfarm/ops", "5-812", "Arthroskopische Operation am Kniegelenk"));
+                var procedureMapping = Mapping.of(procedure, "Procedure", null, List.of(), List.of(),
+                        Mapping.TimeRestrictionMapping.of("performed", DATE_TIME, PERIOD));
+                var crpMapping = Mapping.of(CRP, "Observation", null, List.of(), List.of(),
+                        Mapping.TimeRestrictionMapping.of("effective", DATE_TIME));
+                var mappings = Map.of(procedure, procedureMapping, CRP, crpMapping);
+                var conceptTree = new MappingTreeBase(List.of(createTreeRootWithoutChildren(procedure),
+                        createTreeRootWithoutChildren(CRP)));
+                var mappingContext = MappingContext.of(mappings, conceptTree, CODE_SYSTEM_ALIASES);
+
+                var anchor = Group.of("anchor-procedure",
+                        List.of(List.of(ConceptCriterion.of(ContextualConcept.of(procedure)))),
+                        Group.AnchorOccurrence.FIRST, Group.AnchorPoint.START);
+                var dependent = Group.of("group-crp-after-procedure",
+                        List.of(List.of(ConceptCriterion.of(ContextualConcept.of(CRP)))),
+                        RelativeTimeRestriction.of("anchor-procedure", Duration.ZERO, Duration.ofHours(24)));
+                var structuredQuery = StructuredQuery.of(List.of(anchor, dependent));
+
+                var library = Translator.of(mappingContext).toCql(structuredQuery);
+
+                assertThat(library).printsTo("""
+                        library Retrieve version '1.0.0'
+                        using FHIR version '4.0.0'
+                        include FHIRHelpers version '4.0.0'
+
+                        codesystem codeSystem1: 'http://fhir.de/CodeSystem/bfarm/ops'
+                        codesystem loinc: 'http://loinc.org'
+
+                        context Patient
+
+                        define "Criterion 1":
+                          exists [Procedure: Code '5-812' from codeSystem1]
+
+                        define "AnchorDate_anchor-procedure":
+                          Min(from [Procedure: Code '5-812' from codeSystem1] P
+                            return Coalesce(ToDate(P.performed as dateTime), ToDate((P.performed as Period).start)))
+
+                        define "Criterion 2":
+                          exists (from [Observation: Code '1988-5' from loinc] O
+                            where ToDate(O.effective as dateTime) in Interval["AnchorDate_anchor-procedure" + 0 hours, "AnchorDate_anchor-procedure" + 24 hours])
+
+                        define InInitialPopulation:
+                          "Criterion 1" and
+                          "Criterion 2"
+                        """);
+            }
+
+            /**
+             * Direct test of the asymmetric min/max-across-clauses rule for AND-groups as anchors: anchor =
+             * DIAGNOSIS AND (CRP or LEUKOCYTES), dependent = HEMOGLOBIN within [0h, 24h] of the anchor. Expects
+             * the {@code maxOffset} bound (window end) to be built from {@code Min} across the two clauses, and
+             * the {@code minOffset} bound (window start) from {@code Max} - the opposite of what a naive
+             * single-collapsed-anchor-point implementation would produce.
+             */
+            @Test
+            void multiClauseAnchor() {
+                var diagnosisMapping = Mapping.of(DIAGNOSIS, "Condition", null, List.of(), List.of(),
+                        Mapping.TimeRestrictionMapping.of("onset", DATE_TIME));
+                var crpMapping = Mapping.of(CRP, "Observation", null, List.of(), List.of(),
+                        Mapping.TimeRestrictionMapping.of("effective", DATE_TIME));
+                var leukocytesMapping = Mapping.of(LEUKOCYTES, "Observation", null, List.of(), List.of(),
+                        Mapping.TimeRestrictionMapping.of("effective", DATE_TIME));
+                var hemoglobinMapping = Mapping.of(HEMOGLOBIN, "Observation", null, List.of(), List.of(),
+                        Mapping.TimeRestrictionMapping.of("effective", DATE_TIME));
+                var mappings = Map.of(DIAGNOSIS, diagnosisMapping, CRP, crpMapping, LEUKOCYTES, leukocytesMapping,
+                        HEMOGLOBIN, hemoglobinMapping);
+                var conceptTree = new MappingTreeBase(List.of(createTreeRootWithoutChildren(DIAGNOSIS),
+                        createTreeRootWithoutChildren(CRP), createTreeRootWithoutChildren(LEUKOCYTES),
+                        createTreeRootWithoutChildren(HEMOGLOBIN)));
+                var mappingContext = MappingContext.of(mappings, conceptTree, CODE_SYSTEM_ALIASES);
+
+                var anchor = Group.of("anchor", List.of(
+                        List.of(ConceptCriterion.of(ContextualConcept.of(DIAGNOSIS))),
+                        List.of(ConceptCriterion.of(ContextualConcept.of(CRP)), ConceptCriterion.of(ContextualConcept.of(LEUKOCYTES)))),
+                        Group.AnchorOccurrence.FIRST);
+                var dependent = Group.of("dependent", List.of(List.of(ConceptCriterion.of(ContextualConcept.of(HEMOGLOBIN)))),
+                        RelativeTimeRestriction.of("anchor", Duration.ZERO, Duration.ofHours(24)));
+                var structuredQuery = StructuredQuery.of(List.of(anchor, dependent));
+
+                var library = Translator.of(mappingContext).toCql(structuredQuery);
+
+                assertThat(library).printsTo("""
+                        library Retrieve version '1.0.0'
+                        using FHIR version '4.0.0'
+                        include FHIRHelpers version '4.0.0'
+
+                        codesystem icd10: 'http://fhir.de/CodeSystem/bfarm/icd-10-gm'
+                        codesystem loinc: 'http://loinc.org'
+
+                        context Patient
+
+                        define "Criterion 1":
+                          exists [Condition: Code 'F00' from icd10]
+
+                        define "Criterion 2":
+                          exists [Observation: Code '1988-5' from loinc]
+
+                        define "Criterion 3":
+                          exists [Observation: Code '6690-2' from loinc]
+
+                        define AnchorDate_anchor:
+                          { Min(from [Condition: Code 'F00' from icd10] C
+                            return ToDate(C.onset as dateTime)), Min((from [Observation: Code '1988-5' from loinc] O
+                            return ToDate(O.effective as dateTime)) union
+                          (from [Observation: Code '6690-2' from loinc] O
+                            return ToDate(O.effective as dateTime))) }
+
+                        define "Criterion 4":
+                          exists (from [Observation: Code '718-7' from loinc] O
+                            where ToDate(O.effective as dateTime) in Interval[Max(AnchorDate_anchor) + 0 hours, Min(AnchorDate_anchor) + 24 hours])
+
+                        define InInitialPopulation:
+                          "Criterion 1" and
+                          ("Criterion 2" or
+                          "Criterion 3") and
+                          "Criterion 4"
+                        """);
+            }
         }
     }
 }

@@ -12,6 +12,7 @@ import de.medizininformatikinitiative.cctb.model.cql.CodeSystemDefinition;
 import de.medizininformatikinitiative.cctb.model.cql.Container;
 import de.medizininformatikinitiative.cctb.model.cql.DefaultExpression;
 import de.medizininformatikinitiative.cctb.model.cql.Expression;
+import de.medizininformatikinitiative.cctb.model.cql.IntervalSelector;
 
 import java.util.List;
 import java.util.Optional;
@@ -57,6 +58,11 @@ public interface Criterion {
         public TimeRestriction timeRestriction() {
             return null;
         }
+
+        @Override
+        public Container<DefaultExpression> dateValuesExpr(MappingContext mappingContext, Group.AnchorPoint anchorPoint) {
+            throw new UnsupportedOperationException();
+        }
     };
 
     /**
@@ -88,14 +94,24 @@ public interface Criterion {
         public TimeRestriction timeRestriction() {
             return null;
         }
+
+        @Override
+        public Container<DefaultExpression> dateValuesExpr(MappingContext mappingContext, Group.AnchorPoint anchorPoint) {
+            throw new UnsupportedOperationException();
+        }
     };
 
     @JsonCreator
-    static Criterion create(@JsonProperty("context") TermCode context,
+    static Criterion create(@JsonProperty("type") String type,
+                            @JsonProperty("context") TermCode context,
                             @JsonProperty("termCodes") List<TermCode> termCodes,
                             @JsonProperty("valueFilter") ObjectNode valueFilter,
                             @JsonProperty("timeRestriction") TimeRestriction timeRestriction,
                             @JsonProperty("attributeFilters") List<ObjectNode> attributeFilters) {
+        if ("now".equals(type)) {
+            return NowCriterion.INSTANCE;
+        }
+
         var concept = ContextualConcept.of(requireNonNull(context, "missing JSON property: context"),
                 Concept.of(requireNonNull(termCodes, "missing JSON property: termCodes")));
 
@@ -104,8 +120,8 @@ public interface Criterion {
         if (valueFilter == null) {
             criterion = ConceptCriterion.of(concept, timeRestriction);
         } else {
-            var type = valueFilter.get("type").asString();
-            switch (type) {
+            var valueFilterType = valueFilter.get("type").asString();
+            switch (valueFilterType) {
                 case "quantity-comparator" -> {
                     var comparator = Comparator.fromJson(valueFilter.get("comparator").asString());
                     var value = valueFilter.get("value").decimalValue();
@@ -135,7 +151,7 @@ public interface Criterion {
                             StreamSupport.stream(selectedConcepts.spliterator(), false)
                                     .map(TermCode::fromJsonNode).toList(), timeRestriction);
                 }
-                default -> throw new IllegalArgumentException("unknown valueFilter type: " + type);
+                default -> throw new IllegalArgumentException("unknown valueFilter type: " + valueFilterType);
             }
         }
 
@@ -150,7 +166,9 @@ public interface Criterion {
     }
 
     static Criterion fromJsonNode(JsonNode node) {
-        return Criterion.create(TermCode.fromJsonNode(node.get("context")),
+        var typeNode = node.get("type");
+        return Criterion.create(typeNode == null ? null : typeNode.asString(),
+                TermCode.fromJsonNode(node.get("context")),
                 getAndMap(node, "termCodes", termCodesNode -> StreamSupport.stream(termCodesNode.spliterator(), false)
                         .map(TermCode::fromJsonNode).toList()),
                 asObjectNode(node.get("valueFilter")),
@@ -180,7 +198,48 @@ public interface Criterion {
      */
     Container<DefaultExpression> toCql(MappingContext mappingContext);
 
+    /**
+     * Translates this criterion into a CQL expression, additionally restricting it to {@code relativeWindow} -
+     * used when this criterion sits in a {@link Group} with a {@link RelativeTimeRestriction}.
+     * <p>
+     * The default implementation ignores {@code relativeWindow}, appropriate for criteria without an
+     * instance-level date to restrict (e.g. {@link #TRUE}, {@link #FALSE}, {@link NowCriterion}).
+     *
+     * @param mappingContext  contains the mappings needed to create the CQL expression
+     * @param relativeWindow  the computed time window this criterion's matching resources must fall into
+     * @return a {@link Container} of the CQL expression together with its used {@link CodeSystemDefinition
+     * CodeSystemDefinitions}
+     */
+    default Container<DefaultExpression> toCql(MappingContext mappingContext, IntervalSelector relativeWindow) {
+        return toCql(mappingContext);
+    }
+
     Container<DefaultExpression> toReferencesCql(MappingContext mappingContext);
+
+    /**
+     * Returns a CQL expression evaluating to the list of dates of every resource matching this criterion, reduced
+     * to a single point per resource via {@code anchorPoint} - used to resolve the anchor date(s) of a
+     * {@link Group} this criterion sits in.
+     *
+     * @param mappingContext contains the mappings needed to create the CQL expression
+     * @param anchorPoint    which point of a {@code Period}-typed match supplies its date
+     * @return a {@link Container} of the CQL list expression together with its used {@link CodeSystemDefinition
+     * CodeSystemDefinitions}
+     */
+    Container<DefaultExpression> dateValuesExpr(MappingContext mappingContext, Group.AnchorPoint anchorPoint);
+
+    /**
+     * Same as {@link #dateValuesExpr(MappingContext, Group.AnchorPoint)}, additionally restricting the matching
+     * resources to {@code relativeWindow} - used when this criterion sits in a chained anchor group that is
+     * itself a dependent of another anchor.
+     * <p>
+     * The default implementation ignores {@code relativeWindow}, appropriate for criteria without an
+     * instance-level date to restrict.
+     */
+    default Container<DefaultExpression> dateValuesExpr(MappingContext mappingContext, Group.AnchorPoint anchorPoint,
+                                                         IntervalSelector relativeWindow) {
+        return dateValuesExpr(mappingContext, anchorPoint);
+    }
 
     List<AttributeFilter> attributeFilters();
 
