@@ -115,22 +115,28 @@ public record Group(String id, List<List<Criterion>> criteria, RelativeTimeRestr
     public Container<DefaultExpression> toCql(MappingContext mappingContext, Map<String, Group> allGroupsById,
                                               boolean isInclusionSide) {
         if (relativeTimeRestriction == null) {
-            return combineCriteria(mappingContext, isInclusionSide, null);
+            return combineCriteria(mappingContext, isInclusionSide, null, null);
         }
         var anchor = allGroupsById.get(relativeTimeRestriction.anchorRef());
-        return computeWindow(mappingContext, allGroupsById, anchor)
-                .flatMap(window -> combineCriteria(mappingContext, isInclusionSide, (IntervalSelector) window));
+        var window = computeWindow(mappingContext, allGroupsById, anchor);
+        return window.interval().flatMap(intervalExpr ->
+                combineCriteria(mappingContext, isInclusionSide, (IntervalSelector) intervalExpr, window.guard()));
     }
 
+    /**
+     * Combines this group's own criteria (level 2/3 AND/OR). When {@code window} is non-null, every leaf
+     * criterion's window-filtered result is AND'd with {@code guard} first - see {@link Window} for why an
+     * explicit guard, rather than the target language's own null-propagation, is required.
+     */
     private Container<DefaultExpression> combineCriteria(MappingContext mappingContext, boolean isInclusionSide,
-                                                          IntervalSelector window) {
+                                                          IntervalSelector window, Container<DefaultExpression> guard) {
         var level2Combiner = isInclusionSide ? Container.AND : Container.OR;
         var level3Combiner = isInclusionSide ? Container.OR : Container.AND;
         return criteria.stream()
                 .map(clause -> clause.stream()
                         .map(criterion -> window == null
                                 ? criterion.toCql(mappingContext)
-                                : criterion.toCql(mappingContext, window))
+                                : Container.AND.apply(guard, criterion.toCql(mappingContext, window)))
                         .reduce(Container.empty(), level3Combiner))
                 .reduce(Container.empty(), level2Combiner);
     }
@@ -162,9 +168,13 @@ public record Group(String id, List<List<Criterion>> criteria, RelativeTimeRestr
             return aggregateClauseDates(mappingContext, null);
         }
         var anchor = allGroupsById.get(relativeTimeRestriction.anchorRef());
-        var windowContainer = computeWindow(mappingContext, allGroupsById, anchor);
-        var earliest = windowContainer.flatMap(w -> aggregateClauseDates(mappingContext, (IntervalSelector) w).earliest());
-        var latest = windowContainer.flatMap(w -> aggregateClauseDates(mappingContext, (IntervalSelector) w).latest());
+        // Known gap, not covered by this fix: chaining doesn't yet apply `window.guard()` to candidate
+        // filtering here - only the final criterion-matching path in combineCriteria does. If the
+        // upstream anchor doesn't resolve, this group's own clause-date resolution can still incorrectly
+        // include out-of-window candidates when it's itself an anchor for something further downstream.
+        var window = computeWindow(mappingContext, allGroupsById, anchor);
+        var earliest = window.interval().flatMap(w -> aggregateClauseDates(mappingContext, (IntervalSelector) w).earliest());
+        var latest = window.interval().flatMap(w -> aggregateClauseDates(mappingContext, (IntervalSelector) w).latest());
         return new AnchorDates(earliest, latest);
     }
 
@@ -234,22 +244,36 @@ public record Group(String id, List<List<Criterion>> criteria, RelativeTimeRestr
     }
 
     /**
-     * Returns a {@link Container} holding the computed window as an {@link IntervalSelector}, upcast to
-     * {@link DefaultExpression} because {@code IntervalSelector} (like every other concrete {@code Expression}
-     * subtype here) implements {@code Expression<DefaultExpression>} rather than {@code Expression<IntervalSelector>}
-     * and so cannot itself be a {@link Container}'s type parameter - callers cast back to {@code IntervalSelector}.
+     * The computed time window ({@code interval}) together with an explicit validity {@code guard} - "did the
+     * anchor actually resolve for this patient" - that {@link #combineCriteria} AND's into every criterion this
+     * window is applied to.
+     * <p>
+     * The guard is required, not optional defensiveness: naive three-valued-logic reasoning suggests a criterion
+     * measured against a window built from an unresolved (null) anchor date should naturally evaluate to false
+     * via ordinary null propagation ({@code Min({})} over an empty candidate list &rarr; null &rarr;
+     * {@code null + Duration} &rarr; null-bounded {@code Interval} &rarr; a {@code where} clause dropping the
+     * row). Confirmed empirically against a real engine (Blaze 0.34) that this does NOT happen - the row is
+     * kept and the criterion incorrectly matches as if the window were unbounded, the worse of the two possible
+     * failure modes. So the guard is built explicitly here from the anchor's own resolved dates, independent of
+     * whatever the target engine's arithmetic/interval-membership null handling actually does.
+     */
+    private record Window(Container<DefaultExpression> interval, Container<DefaultExpression> guard) {}
+
+    /**
+     * Computes this group's {@link Window} against {@code anchor}.
      * <p>
      * {@code windowEnd} (the {@code maxOffset} bound) is built from {@code anchor}'s {@link AnchorDates#earliest},
      * {@code windowStart} (the {@code minOffset} bound) from its {@link AnchorDates#latest} - see the design note
      * on {@link AnchorDates} for why. For a single-clause anchor these are the same, already-named value, so this
      * reduces to exactly the previous, tested behaviour: the anchor date resolved once and referenced by
      * identifier from both bounds instead of embedding a full copy of the (potentially large, concept-expanded)
-     * anchor subquery inline.
+     * anchor subquery inline. The guard checks both {@code earliest} and {@code latest} directly (not the
+     * computed {@code windowStart}/{@code windowEnd}) so it stays correct regardless of how the target engine's
+     * own arithmetic handles a null operand - redundant but harmless when the two are the same value.
      */
-    private Container<DefaultExpression> computeWindow(MappingContext mappingContext, Map<String, Group> allGroupsById,
-                                                        Group anchor) {
+    private Window computeWindow(MappingContext mappingContext, Map<String, Group> allGroupsById, Group anchor) {
         var anchorDates = anchor.resolveAnchorDates(mappingContext, allGroupsById);
-        return anchorDates.latest().flatMap(latestExpr -> anchorDates.earliest().map(earliestExpr -> {
+        var interval = anchorDates.latest().flatMap(latestExpr -> anchorDates.earliest().map(earliestExpr -> {
             Expression<?> windowStart = relativeTimeRestriction.minOffset() == null
                     ? DateTimeExpression.of(TimeRestriction.MIN_AFTER_DATE)
                     : AdditionExpressionTerm.of(latestExpr, offsetQuantity(relativeTimeRestriction.minOffset()));
@@ -258,6 +282,11 @@ public record Group(String id, List<List<Criterion>> criteria, RelativeTimeRestr
                     : AdditionExpressionTerm.of(earliestExpr, offsetQuantity(relativeTimeRestriction.maxOffset()));
             return (DefaultExpression) IntervalSelector.of(windowStart, windowEnd);
         }));
+        var guard = anchorDates.latest().flatMap(latestExpr -> anchorDates.earliest().map(earliestExpr ->
+                earliestExpr.equals(latestExpr)
+                        ? IsNotNullExpression.of(earliestExpr)
+                        : (DefaultExpression) AndExpression.of(IsNotNullExpression.of(earliestExpr), IsNotNullExpression.of(latestExpr))));
+        return new Window(interval, guard);
     }
 
     /**

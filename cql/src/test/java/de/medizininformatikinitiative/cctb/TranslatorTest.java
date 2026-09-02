@@ -1517,6 +1517,7 @@ class TranslatorTest {
 
                         define InInitialPopulation:
                           "Criterion 1" and
+                          "AnchorDate_anchor-dementia-diagnosis" is not null and
                           "Criterion 2"
                         """);
             }
@@ -1573,7 +1574,9 @@ class TranslatorTest {
 
                         define InInitialPopulation:
                           "Criterion 1" and
+                          "AnchorDate_anchor-dementia-diagnosis 1" is not null and
                           "Criterion 2" and
+                          "AnchorDate_anchor-dementia-diagnosis 2" is not null and
                           "Criterion 3"
                         """);
             }
@@ -1609,6 +1612,7 @@ class TranslatorTest {
 
                         define InInitialPopulation:
                           "Criterion 1" and
+                          "AnchorDate_anchor-now" is not null and
                           "Criterion 2"
                         """);
             }
@@ -1648,6 +1652,7 @@ class TranslatorTest {
 
                         define InInitialPopulation:
                           "Criterion 1" and
+                          "AnchorDate_anchor-dementia-diagnosis" is not null and
                           "Criterion 2"
                         """);
             }
@@ -1687,6 +1692,7 @@ class TranslatorTest {
 
                         define InInitialPopulation:
                           "Criterion 1" and
+                          "AnchorDate_anchor-dementia-diagnosis" is not null and
                           "Criterion 2"
                         """);
             }
@@ -1711,6 +1717,11 @@ class TranslatorTest {
                 // which are two separately-built containers, so (per the same cross-container limitation noted in
                 // fanOutTwoDependentsOnOneAnchor) "AnchorDate_anchor-now" ends up suffixed apart (`1`/`2`) rather
                 // than shared.
+                //
+                // Note the guard only appears once here, on Criterion 2 - not on "AnchorDate_anchor-now 2", which
+                // feeds AnchorDate_group-diagnosis-since-now's own candidate filtering via the chaining path in
+                // resolveAnchorDates. That path doesn't yet apply the guard (see the comment there); only the
+                // final criterion-matching path in combineCriteria does. Known, scoped-out gap for chained anchors.
                 assertThat(library).printsTo("""
                         library Retrieve version '1.0.0'
                         using FHIR version '4.0.0'
@@ -1745,7 +1756,9 @@ class TranslatorTest {
 
                         define InInitialPopulation:
                           "Criterion 1" and
+                          "AnchorDate_anchor-now 1" is not null and
                           "Criterion 2" and
+                          "AnchorDate_group-diagnosis-since-now" is not null and
                           "Criterion 3"
                         """);
             }
@@ -1805,6 +1818,7 @@ class TranslatorTest {
 
                         define InInitialPopulation:
                           "Criterion 1" and
+                          "AnchorDate_anchor-procedure" is not null and
                           "Criterion 2"
                         """);
             }
@@ -1877,6 +1891,8 @@ class TranslatorTest {
                           "Criterion 1" and
                           ("Criterion 2" or
                           "Criterion 3") and
+                          Min(AnchorDate_anchor) is not null and
+                          Max(AnchorDate_anchor) is not null and
                           "Criterion 4"
                         """);
             }

@@ -294,6 +294,125 @@ public class EvaluationIT {
     }
 
     /**
+     * Documents a confirmed Blaze/CQL gap (not a cctb bug): naive three-valued-logic reasoning says {@code X in
+     * Interval[null, null]} should be null/unknown, and a {@code where} clause with a null condition should drop
+     * the row (like SQL {@code WHERE NULL}) - so {@code exists(...)} should come out {@code false}. Blaze 0.34
+     * does not do this; the row is kept and {@code exists(...)} comes out {@code true}. Confirmed with a
+     * hand-written library carrying a literal {@code null as DateTime} instead of a real {@code Min} over an
+     * empty retrieve, to rule out {@code Min({})}-over-an-empty-retrieve as the culprit (see the real-generated-
+     * CQL version of this same gap in {@link #evaluateDependentAloneWhenAnchorNeverResolves}). Relevant because a
+     * possible future design (letting an anchor be referenceable without being independently required, e.g. for
+     * OR between differently-anchored branches) would need a dependent whose anchor never resolves to gracefully
+     * evaluate to "no match" - it currently does not, silently behaving as an unbounded window instead. Any such
+     * design would need an explicit {@code AnchorDate is not null and (...)} guard rather than relying on this.
+     */
+    @Test
+    public void evaluateNullIntervalMembershipDirectly() throws Exception {
+        var bundle = new Bundle().setType(TRANSACTION);
+        addPut(bundle, "Patient", "no-diagnosis", patient("no-diagnosis"));
+        addPut(bundle, "Observation", "no-diagnosis-crp",
+                observation("no-diagnosis-crp", "no-diagnosis", CRP, "2024-01-08"));
+        fhirClient.transaction().withBundle(bundle).execute();
+
+        var cql = """
+                library Retrieve version '1.0.0'
+                using FHIR version '4.0.0'
+                include FHIRHelpers version '4.0.0'
+
+                codesystem loinc: 'http://loinc.org'
+
+                context Patient
+
+                define InInitialPopulation:
+                  exists (from [Observation: Code '1988-5' from loinc] O
+                    where ToDate(O.effective as dateTime) in Interval[(null as DateTime) + -72 hours, (null as DateTime) + 0 hours])
+                """;
+
+        var libraryUri = "urn:uuid" + UUID.randomUUID();
+        var library = appendCql(parseResource(Library.class, slurp("Library.json")).setUrl(libraryUri), cql);
+        var measureUri = "urn:uuid" + UUID.randomUUID();
+        var measure = parseResource(Measure.class, slurp("Measure.json")).setUrl(measureUri).addLibrary(libraryUri);
+        fhirClient.transaction().withBundle(createBundle(library, measure)).execute();
+
+        var report = fhirClient.operation()
+                .onType(Measure.class)
+                .named("evaluate-measure")
+                .withSearchParameter(Parameters.class, "measure", new StringParam(measureUri))
+                .andSearchParameter("periodStart", new DateParam("1900"))
+                .andSearchParameter("periodEnd", new DateParam("2100"))
+                .useHttpGet()
+                .returnResourceType(MeasureReport.class)
+                .execute();
+
+        // Confirmed gap (see class javadoc above): should be 0 under correct null-propagation, is 1 in Blaze 0.34.
+        assertEquals(1, report.getGroupFirstRep().getPopulationFirstRep().getCount());
+    }
+
+    /**
+     * Proves the fix for the gap {@link #evaluateNullIntervalMembershipDirectly} documents at the raw-CQL level:
+     * calls {@link Group#toCql} directly on a dependent group alone, bypassing {@link Translator}'s top-level AND
+     * fold (see {@link Translator#groupsExpr}) so the anchor's own truth never independently gates the result -
+     * only the window computation, and the explicit null-guard it now carries (see {@code Group.Window}), does.
+     * This is exactly the shape a future design decoupling "referenceable as anchor" from "independently
+     * required" (e.g. for OR between differently-anchored branches) would rely on.
+     * <p>
+     * Two patients: one has no diagnosis at all (so {@code AnchorDate_diagnosis} resolves to null for them) but
+     * does have a CRP measurement that would match if the window were unbounded; the other has both the
+     * diagnosis and an in-window CRP measurement as a positive control. Only the second is counted - the guard
+     * correctly excludes the first despite Blaze's own null-propagation not doing so on its own.
+     */
+    @Test
+    public void evaluateDependentAloneWhenAnchorNeverResolves() throws Exception {
+        var diagnosisMapping = Mapping.of(DEMENTIA_DIAGNOSIS, "Condition", null, List.of(), List.of(),
+                Mapping.TimeRestrictionMapping.of("onset", Mapping.TimeRestrictionMapping.Type.DATE_TIME));
+        var crpMapping = Mapping.of(CRP, "Observation", null, List.of(), List.of(),
+                Mapping.TimeRestrictionMapping.of("effective", Mapping.TimeRestrictionMapping.Type.DATE_TIME));
+        var mappings = Map.of(DEMENTIA_DIAGNOSIS, diagnosisMapping, CRP, crpMapping);
+        var mappingContext = MappingContext.of(mappings, null, CODE_SYSTEM_ALIASES);
+
+        var anchorGroup = Group.of("diagnosis", List.of(List.of(ConceptCriterion.of(ContextualConcept.of(DEMENTIA_DIAGNOSIS)))),
+                Group.AnchorOccurrence.FIRST);
+        var dependentGroup = Group.of(null, List.of(List.of(ConceptCriterion.of(ContextualConcept.of(CRP)))),
+                RelativeTimeRestriction.of("diagnosis", Duration.parse("-P3D"), Duration.ZERO));
+        var allGroupsById = Map.of(anchorGroup.id(), anchorGroup);
+
+        // Isolated: only the dependent's own window-filtered criteria - no top-level AND on the anchor's own truth.
+        var cql = dependentGroup.toCql(mappingContext, allGroupsById, true)
+                .moveToPatientContext("InInitialPopulation")
+                .print();
+
+        var bundle = new Bundle().setType(TRANSACTION);
+        addPut(bundle, "Patient", "no-diagnosis", patient("no-diagnosis"));
+        addPut(bundle, "Observation", "no-diagnosis-crp",
+                observation("no-diagnosis-crp", "no-diagnosis", CRP, "2024-01-08"));
+        addPut(bundle, "Patient", "with-diagnosis", patient("with-diagnosis"));
+        addPut(bundle, "Condition", "with-diagnosis-diagnosis",
+                condition("with-diagnosis-diagnosis", "with-diagnosis", DEMENTIA_DIAGNOSIS, "2024-01-10"));
+        addPut(bundle, "Observation", "with-diagnosis-crp",
+                observation("with-diagnosis-crp", "with-diagnosis", CRP, "2024-01-08"));
+        fhirClient.transaction().withBundle(bundle).execute();
+
+        var libraryUri = "urn:uuid" + UUID.randomUUID();
+        var library = appendCql(parseResource(Library.class, slurp("Library.json")).setUrl(libraryUri), cql);
+        var measureUri = "urn:uuid" + UUID.randomUUID();
+        var measure = parseResource(Measure.class, slurp("Measure.json")).setUrl(measureUri).addLibrary(libraryUri);
+        fhirClient.transaction().withBundle(createBundle(library, measure)).execute();
+
+        var report = fhirClient.operation()
+                .onType(Measure.class)
+                .named("evaluate-measure")
+                .withSearchParameter(Parameters.class, "measure", new StringParam(measureUri))
+                .andSearchParameter("periodStart", new DateParam("1900"))
+                .andSearchParameter("periodEnd", new DateParam("2100"))
+                .useHttpGet()
+                .returnResourceType(MeasureReport.class)
+                .execute();
+
+        // Fixed: only "with-diagnosis" is counted - the explicit null-guard excludes "no-diagnosis" correctly.
+        assertEquals(1, report.getGroupFirstRep().getPopulationFirstRep().getCount());
+    }
+
+    /**
      * Verification for a real bug suspected from a user-reported anchor whose mapping supports both {@code
      * dateTime} and {@code Period}: {@code dateProjectionExpr} (AbstractCriterion) built {@code
      * Coalesce(ToDate(x as dateTime), (x as Period).start)} - {@code ToDate} returns {@code Date}, but {@code
