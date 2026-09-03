@@ -58,6 +58,8 @@ public class EvaluationIT {
             TermCode.of("http://fhir.de/CodeSystem/dimdi/icd-10-gm", "F00", "Demenz bei Alzheimer-Krankheit"));
     static final ContextualTermCode CRP = ContextualTermCode.of(CONTEXT,
             TermCode.of("http://loinc.org", "1988-5", "C-reaktives Protein"));
+    static final ContextualTermCode LEUKOCYTES = ContextualTermCode.of(CONTEXT,
+            TermCode.of("http://loinc.org", "6690-2", "Leukozyten"));
     static final Map<String, String> CODE_SYSTEM_ALIASES = Map.of("http://loinc.org", "loinc");
 
     @Container
@@ -114,7 +116,7 @@ public class EvaluationIT {
         var mappingContext = MappingContext.of(mappings, conceptTree, CODE_SYSTEM_ALIASES);
         var translator = Translator.of(mappingContext);
         var criterion = NumericCriterion.of(ContextualConcept.of(BLOOD_PRESSURE), LESS_THAN, BigDecimal.valueOf(80), "mm[Hg]");
-        var structuredQuery = StructuredQuery.of(List.of(Group.of(List.of(List.of(criterion)))));
+        var structuredQuery = StructuredQuery.of(List.of(List.of(Group.of(List.of(List.of(criterion))))));
         var cql = translator.toCql(structuredQuery).print();
         var libraryUri = "urn:uuid" + UUID.randomUUID();
         var library = appendCql(parseResource(Library.class, slurp("Library.json")).setUrl(libraryUri), cql);
@@ -176,41 +178,43 @@ public class EvaluationIT {
                   "version": "https://medizininformatik-initiative.de/fdpg/StructuredQuery/v3/schema",
                   "display": "",
                   "inclusionCriteria": [
-                    {
-                      "criteria": [
-                        [
-                          {
-                            "context": {
-                              "system": "context",
-                              "code": "context",
-                              "display": "context"
-                            },
-                            "termCodes": [
-                              {
-                                "system": "http://loinc.org",
-                                "code": "85354-9",
-                                "display": "Blood pressure panel with all children optional"
-                              }
-                            ],
-                            "attributeFilters": [
-                              {
-                                "attributeCode": {
+                    [
+                      {
+                        "criteria": [
+                          [
+                            {
+                              "context": {
+                                "system": "context",
+                                "code": "context",
+                                "display": "context"
+                              },
+                              "termCodes": [
+                                {
                                   "system": "http://loinc.org",
-                                  "code": "8462-4",
-                                  "display": "Diastolic blood pressure"
-                                },
-                                "type": "quantity-comparator",
-                                "comparator": "lt",
-                                "value": 80,
-                                "unit": {
-                                  "code": "mm[Hg]"
+                                  "code": "85354-9",
+                                  "display": "Blood pressure panel with all children optional"
                                 }
-                              }
-                            ]
-                          }
+                              ],
+                              "attributeFilters": [
+                                {
+                                  "attributeCode": {
+                                    "system": "http://loinc.org",
+                                    "code": "8462-4",
+                                    "display": "Diastolic blood pressure"
+                                  },
+                                  "type": "quantity-comparator",
+                                  "comparator": "lt",
+                                  "value": 80,
+                                  "unit": {
+                                    "code": "mm[Hg]"
+                                  }
+                                }
+                              ]
+                            }
+                          ]
                         ]
-                      ]
-                    }
+                      }
+                    ]
                   ]
                 }
                 """);
@@ -258,7 +262,7 @@ public class EvaluationIT {
                 Group.AnchorOccurrence.FIRST);
         var dependentGroup = Group.of(null, List.of(List.of(ConceptCriterion.of(ContextualConcept.of(CRP)))),
                 RelativeTimeRestriction.of("diagnosis", Duration.parse("-P3D"), Duration.ZERO));
-        var structuredQuery = StructuredQuery.of(List.of(anchorGroup, dependentGroup));
+        var structuredQuery = StructuredQuery.of(List.of(List.of(anchorGroup, dependentGroup)));
         var cql = translator.toCql(structuredQuery).print();
 
         var bundle = new Bundle().setType(TRANSACTION);
@@ -438,7 +442,7 @@ public class EvaluationIT {
                 Group.AnchorOccurrence.FIRST);
         var dependentGroup = Group.of(null, List.of(List.of(ConceptCriterion.of(ContextualConcept.of(CRP)))),
                 RelativeTimeRestriction.of("procedure", Duration.ZERO, Duration.ofHours(24)));
-        var structuredQuery = StructuredQuery.of(List.of(anchorGroup, dependentGroup));
+        var structuredQuery = StructuredQuery.of(List.of(List.of(anchorGroup, dependentGroup)));
         var cql = translator.toCql(structuredQuery).print();
 
         var bundle = new Bundle().setType(TRANSACTION);
@@ -468,6 +472,283 @@ public class EvaluationIT {
                 .execute();
 
         assertEquals(2, report.getGroupFirstRep().getPopulationFirstRep().getCount());
+    }
+
+    /**
+     * Proves the OR-of-bundles design (new-constraint-draft.md §1/§3) end to end against a real engine: two
+     * bundles, each independently anchored (no anchor shared between them), OR'd at the top level. A patient
+     * qualifying via bundle B's path entirely (procedure + CRP after it) is correctly included even though they
+     * have no dementia diagnosis at all and so could never satisfy bundle A - proving requiredness is per-bundle,
+     * not document-wide, and that OR between differently-anchored branches (the pattern that motivated §1-§3)
+     * actually works through the real translation path, not just in isolated unit tests.
+     */
+    @Test
+    public void evaluateOrOfIndependentlyAnchoredBundles() throws Exception {
+        var procedure = ContextualTermCode.of(CONTEXT,
+                TermCode.of("http://fhir.de/CodeSystem/bfarm/ops", "5-812", "Arthroskopische Operation am Kniegelenk"));
+        var diagnosisMapping = Mapping.of(DEMENTIA_DIAGNOSIS, "Condition", null, List.of(), List.of(),
+                Mapping.TimeRestrictionMapping.of("onset", Mapping.TimeRestrictionMapping.Type.DATE_TIME));
+        var leukocytesMapping = Mapping.of(LEUKOCYTES, "Observation", null, List.of(), List.of(),
+                Mapping.TimeRestrictionMapping.of("effective", Mapping.TimeRestrictionMapping.Type.DATE_TIME));
+        var procedureMapping = Mapping.of(procedure, "Procedure", null, List.of(), List.of(),
+                Mapping.TimeRestrictionMapping.of("performed", DATE_TIME));
+        var crpMapping = Mapping.of(CRP, "Observation", null, List.of(), List.of(),
+                Mapping.TimeRestrictionMapping.of("effective", Mapping.TimeRestrictionMapping.Type.DATE_TIME));
+        var mappings = Map.of(DEMENTIA_DIAGNOSIS, diagnosisMapping, LEUKOCYTES, leukocytesMapping,
+                procedure, procedureMapping, CRP, crpMapping);
+        var mappingContext = MappingContext.of(mappings, null, CODE_SYSTEM_ALIASES);
+        var translator = Translator.of(mappingContext);
+
+        var anchorDiagnosis = Group.of("diagnosis", List.of(List.of(ConceptCriterion.of(ContextualConcept.of(DEMENTIA_DIAGNOSIS)))),
+                Group.AnchorOccurrence.FIRST);
+        var dependentLeukocytes = Group.of(null, List.of(List.of(ConceptCriterion.of(ContextualConcept.of(LEUKOCYTES)))),
+                RelativeTimeRestriction.of("diagnosis", Duration.ZERO, Duration.ofDays(30)));
+        var anchorProcedure = Group.of("procedure", List.of(List.of(ConceptCriterion.of(ContextualConcept.of(procedure)))),
+                Group.AnchorOccurrence.FIRST);
+        var dependentCrp = Group.of(null, List.of(List.of(ConceptCriterion.of(ContextualConcept.of(CRP)))),
+                RelativeTimeRestriction.of("procedure", Duration.ZERO, Duration.ofHours(24)));
+        var structuredQuery = StructuredQuery.of(List.of(
+                List.of(anchorDiagnosis, dependentLeukocytes),
+                List.of(anchorProcedure, dependentCrp)));
+        var cql = translator.toCql(structuredQuery).print();
+
+        var bundle = new Bundle().setType(TRANSACTION);
+        addPut(bundle, "Patient", "via-diagnosis-path", patient("via-diagnosis-path"));
+        addPut(bundle, "Condition", "via-diagnosis-path-diagnosis",
+                condition("via-diagnosis-path-diagnosis", "via-diagnosis-path", DEMENTIA_DIAGNOSIS, "2024-01-10"));
+        addPut(bundle, "Observation", "via-diagnosis-path-leukocytes",
+                observation("via-diagnosis-path-leukocytes", "via-diagnosis-path", LEUKOCYTES, "2024-01-15"));
+        addPut(bundle, "Patient", "via-procedure-path", patient("via-procedure-path"));
+        addPut(bundle, "Procedure", "via-procedure-path-procedure",
+                procedureWithDateTime("via-procedure-path-procedure", "via-procedure-path", procedure, "2024-01-10"));
+        addPut(bundle, "Observation", "via-procedure-path-crp",
+                observation("via-procedure-path-crp", "via-procedure-path", CRP, "2024-01-10"));
+        addPut(bundle, "Patient", "neither", patient("neither"));
+        fhirClient.transaction().withBundle(bundle).execute();
+
+        var libraryUri = "urn:uuid" + UUID.randomUUID();
+        var library = appendCql(parseResource(Library.class, slurp("Library.json")).setUrl(libraryUri), cql);
+        var measureUri = "urn:uuid" + UUID.randomUUID();
+        var measure = parseResource(Measure.class, slurp("Measure.json")).setUrl(measureUri).addLibrary(libraryUri);
+        fhirClient.transaction().withBundle(createBundle(library, measure)).execute();
+
+        var report = fhirClient.operation()
+                .onType(Measure.class)
+                .named("evaluate-measure")
+                .withSearchParameter(Parameters.class, "measure", new StringParam(measureUri))
+                .andSearchParameter("periodStart", new DateParam("1900"))
+                .andSearchParameter("periodEnd", new DateParam("2100"))
+                .useHttpGet()
+                .returnResourceType(MeasureReport.class)
+                .execute();
+
+        assertEquals(2, report.getGroupFirstRep().getPopulationFirstRep().getCount());
+    }
+
+    /**
+     * Proves the "requiredness follows bundle membership, not referenceability" mechanism (new-constraint-draft.md
+     * §4) end to end: the SAME anchor id is a required member of bundle A (alongside its dependent) but is only
+     * referenced, never re-listed, in bundle B. A patient who has the diagnosis and an in-window CRP but no
+     * donepezil correctly fails bundle A (missing an AND member) yet still qualifies via bundle B - proving the
+     * anchor's own truth is genuinely not required there. A patient with no diagnosis at all correctly fails both
+     * bundles, including bundle B, via the null-guard fix - proving the guard still fires correctly through the
+     * real bundle/OR translation path, not just the isolated-Group path the original regression tests cover.
+     */
+    @Test
+    public void evaluateSameAnchorSharedAsymmetricallyAcrossBundles() throws Exception {
+        var diagnosisMapping = Mapping.of(DEMENTIA_DIAGNOSIS, "Condition", null, List.of(), List.of(),
+                Mapping.TimeRestrictionMapping.of("onset", Mapping.TimeRestrictionMapping.Type.DATE_TIME));
+        var leukocytesMapping = Mapping.of(LEUKOCYTES, "Observation", null, List.of(), List.of(),
+                Mapping.TimeRestrictionMapping.of("effective", Mapping.TimeRestrictionMapping.Type.DATE_TIME));
+        var crpMapping = Mapping.of(CRP, "Observation", null, List.of(), List.of(),
+                Mapping.TimeRestrictionMapping.of("effective", Mapping.TimeRestrictionMapping.Type.DATE_TIME));
+        var mappings = Map.of(DEMENTIA_DIAGNOSIS, diagnosisMapping, LEUKOCYTES, leukocytesMapping, CRP, crpMapping);
+        var mappingContext = MappingContext.of(mappings, null, CODE_SYSTEM_ALIASES);
+        var translator = Translator.of(mappingContext);
+
+        var anchorDiagnosis = Group.of("diagnosis", List.of(List.of(ConceptCriterion.of(ContextualConcept.of(DEMENTIA_DIAGNOSIS)))),
+                Group.AnchorOccurrence.FIRST);
+        var dependentLeukocytes = Group.of(null, List.of(List.of(ConceptCriterion.of(ContextualConcept.of(LEUKOCYTES)))),
+                RelativeTimeRestriction.of("diagnosis", Duration.ZERO, Duration.ofDays(30)));
+        var dependentCrp = Group.of(null, List.of(List.of(ConceptCriterion.of(ContextualConcept.of(CRP)))),
+                RelativeTimeRestriction.of("diagnosis", Duration.ofHours(-72), Duration.ZERO));
+        var structuredQuery = StructuredQuery.of(List.of(
+                List.of(anchorDiagnosis, dependentLeukocytes),
+                List.of(dependentCrp)));
+        var cql = translator.toCql(structuredQuery).print();
+
+        var bundle = new Bundle().setType(TRANSACTION);
+        addPut(bundle, "Patient", "diagnosis-and-leukocytes", patient("diagnosis-and-leukocytes"));
+        addPut(bundle, "Condition", "diagnosis-and-leukocytes-diagnosis",
+                condition("diagnosis-and-leukocytes-diagnosis", "diagnosis-and-leukocytes", DEMENTIA_DIAGNOSIS, "2024-01-10"));
+        addPut(bundle, "Observation", "diagnosis-and-leukocytes-leukocytes",
+                observation("diagnosis-and-leukocytes-leukocytes", "diagnosis-and-leukocytes", LEUKOCYTES, "2024-01-15"));
+        addPut(bundle, "Patient", "diagnosis-and-crp-no-leukocytes", patient("diagnosis-and-crp-no-leukocytes"));
+        addPut(bundle, "Condition", "diagnosis-and-crp-no-leukocytes-diagnosis",
+                condition("diagnosis-and-crp-no-leukocytes-diagnosis", "diagnosis-and-crp-no-leukocytes", DEMENTIA_DIAGNOSIS, "2024-01-10"));
+        addPut(bundle, "Observation", "diagnosis-and-crp-no-leukocytes-crp",
+                observation("diagnosis-and-crp-no-leukocytes-crp", "diagnosis-and-crp-no-leukocytes", CRP, "2024-01-08"));
+        addPut(bundle, "Patient", "no-diagnosis-with-crp", patient("no-diagnosis-with-crp"));
+        addPut(bundle, "Observation", "no-diagnosis-with-crp-crp",
+                observation("no-diagnosis-with-crp-crp", "no-diagnosis-with-crp", CRP, "2024-01-08"));
+        fhirClient.transaction().withBundle(bundle).execute();
+
+        var libraryUri = "urn:uuid" + UUID.randomUUID();
+        var library = appendCql(parseResource(Library.class, slurp("Library.json")).setUrl(libraryUri), cql);
+        var measureUri = "urn:uuid" + UUID.randomUUID();
+        var measure = parseResource(Measure.class, slurp("Measure.json")).setUrl(measureUri).addLibrary(libraryUri);
+        fhirClient.transaction().withBundle(createBundle(library, measure)).execute();
+
+        var report = fhirClient.operation()
+                .onType(Measure.class)
+                .named("evaluate-measure")
+                .withSearchParameter(Parameters.class, "measure", new StringParam(measureUri))
+                .andSearchParameter("periodStart", new DateParam("1900"))
+                .andSearchParameter("periodEnd", new DateParam("2100"))
+                .useHttpGet()
+                .returnResourceType(MeasureReport.class)
+                .execute();
+
+        assertEquals(2, report.getGroupFirstRep().getPopulationFirstRep().getCount());
+    }
+
+    /**
+     * Proves multiple {@code relativeTimeRestrictions} entries on one group (new-constraint-draft.md §4 "Multiple
+     * entries") end to end: one group's window is the *intersection* of two entries, each with its own anchor -
+     * "between event A and event B". {@code windowStart = Max} of every entry's own start (here just entry A's,
+     * since entry B leaves its start unbounded) and {@code windowEnd = Min} of every entry's own end (entry B's),
+     * so the effective window is exactly {@code [diagnosisDate, procedureDate]}. A CRP measurement between the two
+     * events matches; one after the later event (the procedure) does not, despite being within either single
+     * entry's own window considered alone - proving the intersection, not independent per-entry filtering.
+     */
+    @Test
+    public void evaluateMultipleRelativeTimeRestrictionsIntersectWindow() throws Exception {
+        var procedure = ContextualTermCode.of(CONTEXT,
+                TermCode.of("http://fhir.de/CodeSystem/bfarm/ops", "5-812", "Arthroskopische Operation am Kniegelenk"));
+        var diagnosisMapping = Mapping.of(DEMENTIA_DIAGNOSIS, "Condition", null, List.of(), List.of(),
+                Mapping.TimeRestrictionMapping.of("onset", Mapping.TimeRestrictionMapping.Type.DATE_TIME));
+        var procedureMapping = Mapping.of(procedure, "Procedure", null, List.of(), List.of(),
+                Mapping.TimeRestrictionMapping.of("performed", DATE_TIME));
+        var crpMapping = Mapping.of(CRP, "Observation", null, List.of(), List.of(),
+                Mapping.TimeRestrictionMapping.of("effective", Mapping.TimeRestrictionMapping.Type.DATE_TIME));
+        var mappings = Map.of(DEMENTIA_DIAGNOSIS, diagnosisMapping, procedure, procedureMapping, CRP, crpMapping);
+        var mappingContext = MappingContext.of(mappings, null, CODE_SYSTEM_ALIASES);
+        var translator = Translator.of(mappingContext);
+
+        var anchorDiagnosis = Group.of("diagnosis", List.of(List.of(ConceptCriterion.of(ContextualConcept.of(DEMENTIA_DIAGNOSIS)))),
+                Group.AnchorOccurrence.FIRST);
+        var anchorProcedure = Group.of("procedure", List.of(List.of(ConceptCriterion.of(ContextualConcept.of(procedure)))),
+                Group.AnchorOccurrence.FIRST);
+        var dependentBetween = Group.of(null, List.of(List.of(ConceptCriterion.of(ContextualConcept.of(CRP)))),
+                List.of(RelativeTimeRestriction.of("diagnosis", Duration.ZERO, null),
+                        RelativeTimeRestriction.of("procedure", null, Duration.ZERO)));
+        var structuredQuery = StructuredQuery.of(List.of(List.of(anchorDiagnosis, anchorProcedure, dependentBetween)));
+        var cql = translator.toCql(structuredQuery).print();
+
+        var bundle = new Bundle().setType(TRANSACTION);
+        addPut(bundle, "Patient", "crp-between", patient("crp-between"));
+        addPut(bundle, "Condition", "crp-between-diagnosis",
+                condition("crp-between-diagnosis", "crp-between", DEMENTIA_DIAGNOSIS, "2024-01-01"));
+        addPut(bundle, "Procedure", "crp-between-procedure",
+                procedureWithDateTime("crp-between-procedure", "crp-between", procedure, "2024-01-20"));
+        addPut(bundle, "Observation", "crp-between-crp",
+                observation("crp-between-crp", "crp-between", CRP, "2024-01-10"));
+        addPut(bundle, "Patient", "crp-after-procedure", patient("crp-after-procedure"));
+        addPut(bundle, "Condition", "crp-after-procedure-diagnosis",
+                condition("crp-after-procedure-diagnosis", "crp-after-procedure", DEMENTIA_DIAGNOSIS, "2024-01-01"));
+        addPut(bundle, "Procedure", "crp-after-procedure-procedure",
+                procedureWithDateTime("crp-after-procedure-procedure", "crp-after-procedure", procedure, "2024-01-20"));
+        addPut(bundle, "Observation", "crp-after-procedure-crp",
+                observation("crp-after-procedure-crp", "crp-after-procedure", CRP, "2024-01-25"));
+        fhirClient.transaction().withBundle(bundle).execute();
+
+        var libraryUri = "urn:uuid" + UUID.randomUUID();
+        var library = appendCql(parseResource(Library.class, slurp("Library.json")).setUrl(libraryUri), cql);
+        var measureUri = "urn:uuid" + UUID.randomUUID();
+        var measure = parseResource(Measure.class, slurp("Measure.json")).setUrl(measureUri).addLibrary(libraryUri);
+        fhirClient.transaction().withBundle(createBundle(library, measure)).execute();
+
+        var report = fhirClient.operation()
+                .onType(Measure.class)
+                .named("evaluate-measure")
+                .withSearchParameter(Parameters.class, "measure", new StringParam(measureUri))
+                .andSearchParameter("periodStart", new DateParam("1900"))
+                .andSearchParameter("periodEnd", new DateParam("2100"))
+                .useHttpGet()
+                .returnResourceType(MeasureReport.class)
+                .execute();
+
+        assertEquals(1, report.getGroupFirstRep().getPopulationFirstRep().getCount());
+    }
+
+    /**
+     * Regression test for the multi-clause AND-anchor null-guard gap: a two-clause anchor (DIAGNOSIS and CRP, both
+     * required) is a member of bundle A on its own, and referenced - never re-listed - by a dependent in bundle B.
+     * Bundle B's own guard is therefore the *only* thing standing in for "did every anchor clause resolve", since
+     * bundle A's own AND-of-criteria enforcement is a separate computation bundle B never sees.
+     * <p>
+     * Before the fix, the guard was {@code Min(...) is not null and Max(...) is not null} over the clause-dates
+     * list; since {@code Min}/{@code Max} ignore null list elements rather than propagating, a patient satisfying
+     * only the diagnosis clause (missing CRP) still made both non-null, so the guard incorrectly treated the
+     * anchor as resolved - wrongly admitting that patient via bundle B despite the anchor's AND semantics requiring
+     * both clauses. The fixed guard ({@code not exists (... where D is null)}) checks every list element directly,
+     * so that patient now correctly fails both bundles.
+     */
+    @Test
+    public void evaluateMultiClauseAndAnchorReferencedOnlyAsymmetrically() throws Exception {
+        var diagnosisMapping = Mapping.of(DEMENTIA_DIAGNOSIS, "Condition", null, List.of(), List.of(),
+                Mapping.TimeRestrictionMapping.of("onset", Mapping.TimeRestrictionMapping.Type.DATE_TIME));
+        var crpMapping = Mapping.of(CRP, "Observation", null, List.of(), List.of(),
+                Mapping.TimeRestrictionMapping.of("effective", Mapping.TimeRestrictionMapping.Type.DATE_TIME));
+        var leukocytesMapping = Mapping.of(LEUKOCYTES, "Observation", null, List.of(), List.of(),
+                Mapping.TimeRestrictionMapping.of("effective", Mapping.TimeRestrictionMapping.Type.DATE_TIME));
+        var mappings = Map.of(DEMENTIA_DIAGNOSIS, diagnosisMapping, CRP, crpMapping, LEUKOCYTES, leukocytesMapping);
+        var mappingContext = MappingContext.of(mappings, null, CODE_SYSTEM_ALIASES);
+        var translator = Translator.of(mappingContext);
+
+        var anchor = Group.of("anchor", List.of(
+                        List.of(ConceptCriterion.of(ContextualConcept.of(DEMENTIA_DIAGNOSIS))),
+                        List.of(ConceptCriterion.of(ContextualConcept.of(CRP)))),
+                Group.AnchorOccurrence.FIRST);
+        var dependentLeukocytes = Group.of(null, List.of(List.of(ConceptCriterion.of(ContextualConcept.of(LEUKOCYTES)))),
+                RelativeTimeRestriction.of("anchor", Duration.ZERO, Duration.ofDays(30)));
+        var structuredQuery = StructuredQuery.of(List.of(
+                List.of(anchor),
+                List.of(dependentLeukocytes)));
+        var cql = translator.toCql(structuredQuery).print();
+
+        var bundle = new Bundle().setType(TRANSACTION);
+        addPut(bundle, "Patient", "both-clauses-resolve", patient("both-clauses-resolve"));
+        addPut(bundle, "Condition", "both-clauses-resolve-diagnosis",
+                condition("both-clauses-resolve-diagnosis", "both-clauses-resolve", DEMENTIA_DIAGNOSIS, "2024-01-10"));
+        addPut(bundle, "Observation", "both-clauses-resolve-crp",
+                observation("both-clauses-resolve-crp", "both-clauses-resolve", CRP, "2024-01-08"));
+        addPut(bundle, "Observation", "both-clauses-resolve-leukocytes",
+                observation("both-clauses-resolve-leukocytes", "both-clauses-resolve", LEUKOCYTES, "2024-01-15"));
+        addPut(bundle, "Patient", "diagnosis-only-should-not-match", patient("diagnosis-only-should-not-match"));
+        addPut(bundle, "Condition", "diagnosis-only-should-not-match-diagnosis",
+                condition("diagnosis-only-should-not-match-diagnosis", "diagnosis-only-should-not-match", DEMENTIA_DIAGNOSIS, "2024-01-10"));
+        addPut(bundle, "Observation", "diagnosis-only-should-not-match-leukocytes",
+                observation("diagnosis-only-should-not-match-leukocytes", "diagnosis-only-should-not-match", LEUKOCYTES, "2024-01-15"));
+        fhirClient.transaction().withBundle(bundle).execute();
+
+        var libraryUri = "urn:uuid" + UUID.randomUUID();
+        var library = appendCql(parseResource(Library.class, slurp("Library.json")).setUrl(libraryUri), cql);
+        var measureUri = "urn:uuid" + UUID.randomUUID();
+        var measure = parseResource(Measure.class, slurp("Measure.json")).setUrl(measureUri).addLibrary(libraryUri);
+        fhirClient.transaction().withBundle(createBundle(library, measure)).execute();
+
+        var report = fhirClient.operation()
+                .onType(Measure.class)
+                .named("evaluate-measure")
+                .withSearchParameter(Parameters.class, "measure", new StringParam(measureUri))
+                .andSearchParameter("periodStart", new DateParam("1900"))
+                .andSearchParameter("periodEnd", new DateParam("2100"))
+                .useHttpGet()
+                .returnResourceType(MeasureReport.class)
+                .execute();
+
+        assertEquals(1, report.getGroupFirstRep().getPopulationFirstRep().getCount());
     }
 
     private static Procedure procedureWithDateTime(String id, String patientId, ContextualTermCode concept, String date) {

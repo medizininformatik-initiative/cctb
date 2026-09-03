@@ -41,7 +41,7 @@ class StructuredQueryTest {
             var mapper = new ObjectMapper();
 
             var structuredQuery = mapper.readValue("""
-                    {"inclusionCriteria": [{"criteria": [[{
+                    {"inclusionCriteria": [[{"criteria": [[{
                       "context": {
                         "system": "context",
                         "code": "context",
@@ -52,11 +52,11 @@ class StructuredQueryTest {
                         "code": "1",
                         "display": ""
                       }]
-                    }]]}]}
+                    }]]}]]}
                     """, StructuredQuery.class);
 
             assertEquals(ContextualConcept.of(TC_1),
-                    structuredQuery.inclusionCriteria().get(0).criteria().get(0).get(0).getConcept());
+                    structuredQuery.inclusionCriteria().get(0).get(0).criteria().get(0).get(0).getConcept());
         }
 
         @Test
@@ -65,7 +65,7 @@ class StructuredQueryTest {
 
             var structuredQuery = mapper.readValue("""
                     {"foo-151633": "bar-151639",
-                     "inclusionCriteria": [{"criteria": [[{
+                     "inclusionCriteria": [[{"criteria": [[{
                       "context": {
                         "system": "context",
                         "code": "context",
@@ -76,11 +76,11 @@ class StructuredQueryTest {
                         "code": "1",
                         "display": ""
                       }]
-                    }]]}]}
+                    }]]}]]}
                     """, StructuredQuery.class);
 
             assertEquals(ContextualConcept.of(TC_1),
-                    structuredQuery.inclusionCriteria().get(0).criteria().get(0).get(0).getConcept());
+                    structuredQuery.inclusionCriteria().get(0).get(0).criteria().get(0).get(0).getConcept());
         }
 
         @Test
@@ -88,7 +88,7 @@ class StructuredQueryTest {
             var mapper = new ObjectMapper();
 
             var structuredQuery = mapper.readValue("""
-                    {"inclusionCriteria": [{"criteria": [[{
+                    {"inclusionCriteria": [[{"criteria": [[{
                       "context": {
                         "system": "context",
                         "code": "context",
@@ -110,13 +110,13 @@ class StructuredQueryTest {
                         "code": "2",
                         "display": ""
                       }]
-                    }]]}]}
+                    }]]}]]}
                     """, StructuredQuery.class);
 
             assertEquals(ContextualConcept.of(TC_1),
-                    structuredQuery.inclusionCriteria().get(0).criteria().get(0).get(0).getConcept());
+                    structuredQuery.inclusionCriteria().get(0).get(0).criteria().get(0).get(0).getConcept());
             assertEquals(ContextualConcept.of(TC_2),
-                    structuredQuery.inclusionCriteria().get(0).criteria().get(1).get(0).getConcept());
+                    structuredQuery.inclusionCriteria().get(0).get(0).criteria().get(1).get(0).getConcept());
         }
 
         @Test
@@ -124,7 +124,7 @@ class StructuredQueryTest {
             var mapper = new ObjectMapper();
 
             var structuredQuery = mapper.readValue("""
-                    {"inclusionCriteria": [{"criteria": [[{
+                    {"inclusionCriteria": [[{"criteria": [[{
                       "context": {
                         "system": "context",
                         "code": "context",
@@ -146,13 +146,13 @@ class StructuredQueryTest {
                         "code": "2",
                         "display": ""
                       }]
-                    }]]}]}
+                    }]]}]]}
                     """, StructuredQuery.class);
 
             assertEquals(ContextualConcept.of(TC_1),
-                    structuredQuery.inclusionCriteria().get(0).criteria().get(0).get(0).getConcept());
+                    structuredQuery.inclusionCriteria().get(0).get(0).criteria().get(0).get(0).getConcept());
             assertEquals(ContextualConcept.of(TC_2),
-                    structuredQuery.inclusionCriteria().get(0).criteria().get(0).get(1).getConcept());
+                    structuredQuery.inclusionCriteria().get(0).get(0).criteria().get(0).get(1).getConcept());
         }
 
         @Test
@@ -160,7 +160,7 @@ class StructuredQueryTest {
             var mapper = new ObjectMapper();
 
             var structuredQuery = mapper.readValue("""
-                    {"inclusionCriteria": [{"criteria": [[{
+                    {"inclusionCriteria": [[{"criteria": [[{
                       "context": {
                         "system": "context",
                         "code": "context",
@@ -171,7 +171,7 @@ class StructuredQueryTest {
                         "code": "1",
                         "display": ""
                       }]
-                    }]]}], "exclusionCriteria": [{"criteria": [[{
+                    }]]}]], "exclusionCriteria": [[{"criteria": [[{
                       "context": {
                         "system": "context",
                         "code": "context",
@@ -182,13 +182,50 @@ class StructuredQueryTest {
                         "code": "2",
                         "display": ""
                       }]
-                    }]]}]}
+                    }]]}]]}
                     """, StructuredQuery.class);
 
             assertEquals(ContextualConcept.of(TC_1),
-                    structuredQuery.inclusionCriteria().get(0).criteria().get(0).get(0).getConcept());
+                    structuredQuery.inclusionCriteria().get(0).get(0).criteria().get(0).get(0).getConcept());
             assertEquals(ContextualConcept.of(TC_2),
-                    structuredQuery.exclusionCriteria().get(0).criteria().get(0).get(0).getConcept());
+                    structuredQuery.exclusionCriteria().get(0).get(0).criteria().get(0).get(0).getConcept());
+        }
+
+        @Test
+        void twoBundlesOr() throws Exception {
+            var mapper = new ObjectMapper();
+
+            var structuredQuery = mapper.readValue("""
+                    {"inclusionCriteria": [[{"criteria": [[{
+                      "context": {
+                        "system": "context",
+                        "code": "context",
+                        "display": "context"
+                      },
+                      "termCodes": [{
+                        "system": "tc",
+                        "code": "1",
+                        "display": ""
+                      }]
+                    }]]}], [{"criteria": [[{
+                      "context": {
+                        "system": "context",
+                        "code": "context",
+                        "display": "context"
+                      },
+                      "termCodes": [{
+                        "system": "tc",
+                        "code": "2",
+                        "display": ""
+                      }]
+                    }]]}]]}
+                    """, StructuredQuery.class);
+
+            assertEquals(2, structuredQuery.inclusionCriteria().size());
+            assertEquals(ContextualConcept.of(TC_1),
+                    structuredQuery.inclusionCriteria().get(0).get(0).criteria().get(0).get(0).getConcept());
+            assertEquals(ContextualConcept.of(TC_2),
+                    structuredQuery.inclusionCriteria().get(1).get(0).criteria().get(0).get(0).getConcept());
         }
     }
 
@@ -201,45 +238,64 @@ class StructuredQueryTest {
         }
 
         @Test
+        void emptyBundle() {
+            assertThrows(IllegalArgumentException.class, () -> StructuredQuery.of(List.of(List.of())));
+        }
+
+        @Test
         void duplicateGroupId() {
-            var groups = List.of(
+            var bundle = List.of(
                     Group.of("g1", List.of(List.of(ConceptCriterion.of(ContextualConcept.of(TC_1))))),
                     Group.of("g1", List.of(List.of(ConceptCriterion.of(ContextualConcept.of(TC_2))))));
 
-            var message = assertThrows(IllegalArgumentException.class, () -> StructuredQuery.of(groups)).getMessage();
+            var message = assertThrows(IllegalArgumentException.class,
+                    () -> StructuredQuery.of(List.of(bundle))).getMessage();
+
+            assertEquals("Duplicate group id `g1`.", message);
+        }
+
+        @Test
+        void duplicateGroupIdAcrossBundles() {
+            var bundle1 = List.of(Group.of("g1", List.of(List.of(ConceptCriterion.of(ContextualConcept.of(TC_1))))));
+            var bundle2 = List.of(Group.of("g1", List.of(List.of(ConceptCriterion.of(ContextualConcept.of(TC_2))))));
+
+            var message = assertThrows(IllegalArgumentException.class,
+                    () -> StructuredQuery.of(List.of(bundle1, bundle2))).getMessage();
 
             assertEquals("Duplicate group id `g1`.", message);
         }
 
         @Test
         void danglingAnchorRef() {
-            var groups = List.of(Group.of("dependent", List.of(List.of(ConceptCriterion.of(ContextualConcept.of(TC_1)))),
+            var bundle = List.of(Group.of("dependent", List.of(List.of(ConceptCriterion.of(ContextualConcept.of(TC_1)))),
                     RelativeTimeRestriction.of("unknown-anchor", Duration.ofHours(1), null)));
 
-            var message = assertThrows(IllegalArgumentException.class, () -> StructuredQuery.of(groups)).getMessage();
+            var message = assertThrows(IllegalArgumentException.class,
+                    () -> StructuredQuery.of(List.of(bundle))).getMessage();
 
             assertEquals("Unknown anchorRef `unknown-anchor` in group `dependent`.", message);
         }
 
         @Test
         void anchorRefCycle() {
-            var groups = List.of(
+            var bundle = List.of(
                     Group.of("a", List.of(List.of(ConceptCriterion.of(ContextualConcept.of(TC_1)))),
                             RelativeTimeRestriction.of("b", Duration.ofHours(1), null), Group.AnchorOccurrence.FIRST),
                     Group.of("b", List.of(List.of(ConceptCriterion.of(ContextualConcept.of(TC_2)))),
                             RelativeTimeRestriction.of("a", Duration.ofHours(1), null), Group.AnchorOccurrence.FIRST));
 
-            var message = assertThrows(IllegalArgumentException.class, () -> StructuredQuery.of(groups)).getMessage();
+            var message = assertThrows(IllegalArgumentException.class,
+                    () -> StructuredQuery.of(List.of(bundle))).getMessage();
 
             assertEquals(true, message.startsWith("Cyclic anchorRef graph detected:"));
         }
 
         @Test
         void anchorRefSelfCycle() {
-            var groups = List.of(Group.of("a", List.of(List.of(ConceptCriterion.of(ContextualConcept.of(TC_1)))),
+            var bundle = List.of(Group.of("a", List.of(List.of(ConceptCriterion.of(ContextualConcept.of(TC_1)))),
                     RelativeTimeRestriction.of("a", Duration.ofHours(1), null), Group.AnchorOccurrence.FIRST));
 
-            assertThrows(IllegalArgumentException.class, () -> StructuredQuery.of(groups));
+            assertThrows(IllegalArgumentException.class, () -> StructuredQuery.of(List.of(bundle)));
         }
 
         @Test
@@ -253,7 +309,7 @@ class StructuredQueryTest {
             var dependent = Group.of("dependent", List.of(List.of(ConceptCriterion.of(ContextualConcept.of(TC_1)))),
                     RelativeTimeRestriction.of("anchor", Duration.ofHours(1), null));
 
-            assertDoesNotThrow(() -> StructuredQuery.of(List.of(anchor, dependent)));
+            assertDoesNotThrow(() -> StructuredQuery.of(List.of(List.of(anchor, dependent))));
         }
 
         @Test
@@ -263,7 +319,7 @@ class StructuredQueryTest {
                     RelativeTimeRestriction.of("anchor", Duration.ofHours(1), null));
 
             var message = assertThrows(IllegalArgumentException.class,
-                    () -> StructuredQuery.of(List.of(anchor, dependent))).getMessage();
+                    () -> StructuredQuery.of(List.of(List.of(anchor, dependent)))).getMessage();
 
             assertEquals("Group `anchor` is used as an anchor and therefore requires `anchorOccurrence` to be set.",
                     message);
@@ -275,7 +331,7 @@ class StructuredQueryTest {
             var dependent = Group.of("dependent", List.of(List.of(ConceptCriterion.of(ContextualConcept.of(TC_1)))),
                     RelativeTimeRestriction.of("now-anchor", Duration.ofHours(-1), null));
 
-            StructuredQuery.of(List.of(anchor, dependent));
+            StructuredQuery.of(List.of(List.of(anchor, dependent)));
         }
 
         @Test
@@ -285,7 +341,33 @@ class StructuredQueryTest {
             var dependentExclusion = Group.of("dependent", List.of(List.of(ConceptCriterion.of(ContextualConcept.of(TC_2)))),
                     RelativeTimeRestriction.of("anchor", null, Duration.ofHours(1)));
 
-            StructuredQuery.of(List.of(anchor), List.of(dependentExclusion));
+            StructuredQuery.of(List.of(List.of(anchor)), List.of(List.of(dependentExclusion)));
+        }
+
+        @Test
+        void anchorReferencedFromDifferentBundle() {
+            // Requiredness follows bundle membership, not referenceability (new-constraint-draft.md §4):
+            // "anchor" is required only for bundle 1's own path; bundle 2's dependent merely dates against it.
+            var anchor = Group.of("anchor", List.of(List.of(ConceptCriterion.of(ContextualConcept.of(TC_1)))),
+                    Group.AnchorOccurrence.FIRST);
+            var otherBundleGroup = Group.of("g2", List.of(List.of(ConceptCriterion.of(ContextualConcept.of(TC_1)))));
+            var dependent = Group.of("dependent", List.of(List.of(ConceptCriterion.of(ContextualConcept.of(TC_2)))),
+                    RelativeTimeRestriction.of("anchor", Duration.ofHours(-1), null));
+
+            assertDoesNotThrow(() -> StructuredQuery.of(List.of(List.of(anchor), List.of(otherBundleGroup, dependent))));
+        }
+
+        @Test
+        void multipleRelativeTimeRestrictionsBothMustResolve() {
+            var anchorA = Group.of("anchor-a", List.of(List.of(ConceptCriterion.of(ContextualConcept.of(TC_1)))),
+                    Group.AnchorOccurrence.FIRST);
+            var anchorB = Group.of("anchor-b", List.of(List.of(ConceptCriterion.of(ContextualConcept.of(TC_2)))),
+                    Group.AnchorOccurrence.LAST);
+            var between = Group.of("between", List.of(List.of(ConceptCriterion.of(ContextualConcept.of(TC_1)))),
+                    List.of(RelativeTimeRestriction.of("anchor-a", Duration.ZERO, null),
+                            RelativeTimeRestriction.of("anchor-b", null, Duration.ZERO)));
+
+            assertDoesNotThrow(() -> StructuredQuery.of(List.of(List.of(anchorA, anchorB, between))));
         }
     }
 }

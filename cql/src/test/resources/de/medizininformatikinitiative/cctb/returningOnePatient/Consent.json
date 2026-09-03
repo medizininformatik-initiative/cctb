@@ -2,26 +2,28 @@
   "version": "http://to_be_decided.com/draft-1/schema#",
   "display": "Ausgewählte Merkmale",
   "inclusionCriteria": [
-    {
-      "criteria": [
-        [
-          {
-            "termCodes": [
-              {
-                "code": "yes-yes-no-no",
-                "display": "Verteilte, EU-DSGVO konforme Analyse, ohne Krankenkassendaten, und ohne Rekontaktierung",
-                "system": "fdpg.consent.combined"
+    [
+      {
+        "criteria": [
+          [
+            {
+              "termCodes": [
+                {
+                  "code": "yes-yes-no-no",
+                  "display": "Verteilte, EU-DSGVO konforme Analyse, ohne Krankenkassendaten, und ohne Rekontaktierung",
+                  "system": "fdpg.consent.combined"
+                }
+              ],
+              "context": {
+                "code": "Einwilligung",
+                "display": "Einwilligung",
+                "system": "fdpg.mii.cds",
+                "version": "1.0.0"
               }
-            ],
-            "context": {
-              "code": "Einwilligung",
-              "display": "Einwilligung",
-              "system": "fdpg.mii.cds",
-              "version": "1.0.0"
             }
-          }
+          ]
         ]
-      ]
-    }
+      }
+    ]
   ]
 }

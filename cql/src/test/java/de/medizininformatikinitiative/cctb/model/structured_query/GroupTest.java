@@ -48,7 +48,7 @@ class GroupTest {
 
             assertThat(group.id()).isEqualTo("anchor");
             assertThat(group.anchorOccurrence()).isEqualTo(Group.AnchorOccurrence.FIRST);
-            assertThat(group.relativeTimeRestriction()).isNull();
+            assertThat(group.relativeTimeRestrictions()).isNull();
         }
 
         @Test
@@ -57,7 +57,17 @@ class GroupTest {
             var group = Group.of("dependent", List.of(List.of(ConceptCriterion.of(ContextualConcept.of(TC_1)))),
                     relativeTimeRestriction);
 
-            assertThat(group.relativeTimeRestriction()).isEqualTo(relativeTimeRestriction);
+            assertThat(group.relativeTimeRestrictions()).containsExactly(relativeTimeRestriction);
+        }
+
+        @Test
+        void ofWithMultipleRelativeTimeRestrictions() {
+            var restriction1 = RelativeTimeRestriction.of("anchor-a", Duration.ofHours(-72), Duration.ZERO);
+            var restriction2 = RelativeTimeRestriction.of("anchor-b", null, Duration.ofHours(48));
+            var group = Group.of("dependent", List.of(List.of(ConceptCriterion.of(ContextualConcept.of(TC_1)))),
+                    List.of(restriction1, restriction2));
+
+            assertThat(group.relativeTimeRestrictions()).containsExactly(restriction1, restriction2);
         }
 
         @Test
@@ -109,7 +119,7 @@ class GroupTest {
 
             assertThat(group.id()).isNull();
             assertThat(group.criteria()).hasSize(1);
-            assertThat(group.relativeTimeRestriction()).isNull();
+            assertThat(group.relativeTimeRestrictions()).isNull();
             assertThat(group.anchorOccurrence()).isNull();
             assertThat(group.anchorPoint()).isNull();
         }
@@ -146,11 +156,11 @@ class GroupTest {
             var group = MAPPER.readValue("""
                     {
                       "id": "group-infection-signs-before-diagnosis",
-                      "relativeTimeRestriction": {
+                      "relativeTimeRestrictions": [{
                         "anchorRef": "anchor-dementia-diagnosis",
                         "minOffset": "-P3D",
                         "maxOffset": "P0D"
-                      },
+                      }],
                       "criteria": [[{
                         "context": {
                           "system": "context",
@@ -166,9 +176,39 @@ class GroupTest {
                     }
                     """, Group.class);
 
-            assertThat(group.relativeTimeRestriction().anchorRef()).isEqualTo("anchor-dementia-diagnosis");
-            assertThat(group.relativeTimeRestriction().minOffset()).isEqualTo(Duration.ofDays(-3));
-            assertThat(group.relativeTimeRestriction().maxOffset()).isEqualTo(Duration.ZERO);
+            assertThat(group.relativeTimeRestrictions()).hasSize(1);
+            assertThat(group.relativeTimeRestrictions().get(0).anchorRef()).isEqualTo("anchor-dementia-diagnosis");
+            assertThat(group.relativeTimeRestrictions().get(0).minOffset()).isEqualTo(Duration.ofDays(-3));
+            assertThat(group.relativeTimeRestrictions().get(0).maxOffset()).isEqualTo(Duration.ZERO);
+        }
+
+        @Test
+        void dependentGroupWithMultipleRelativeTimeRestrictions() {
+            var group = MAPPER.readValue("""
+                    {
+                      "id": "group-between-a-and-b",
+                      "relativeTimeRestrictions": [
+                        {"anchorRef": "anchor-a", "minOffset": "P0D"},
+                        {"anchorRef": "anchor-b", "maxOffset": "P0D"}
+                      ],
+                      "criteria": [[{
+                        "context": {
+                          "system": "context",
+                          "code": "context",
+                          "display": "context"
+                        },
+                        "termCodes": [{
+                          "system": "tc",
+                          "code": "1",
+                          "display": ""
+                        }]
+                      }]]
+                    }
+                    """, Group.class);
+
+            assertThat(group.relativeTimeRestrictions()).hasSize(2);
+            assertThat(group.relativeTimeRestrictions().get(0).anchorRef()).isEqualTo("anchor-a");
+            assertThat(group.relativeTimeRestrictions().get(1).anchorRef()).isEqualTo("anchor-b");
         }
 
         @Test

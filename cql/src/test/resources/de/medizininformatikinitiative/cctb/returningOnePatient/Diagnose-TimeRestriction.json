@@ -1,30 +1,32 @@
 {
   "version": "http://to_be_decided.com/draft-1/schema#",
   "inclusionCriteria": [
-    {
-      "criteria": [
-        [
-          {
-            "context": {
-              "code": "Diagnose",
-              "display": "Diagnose",
-              "system": "fdpg.mii.cds",
-              "version": "1.0.0"
-            },
-            "termCodes": [
-              {
-                "code": "S14.11",
-                "display": "",
-                "system": "http://fhir.de/CodeSystem/bfarm/icd-10-gm"
+    [
+      {
+        "criteria": [
+          [
+            {
+              "context": {
+                "code": "Diagnose",
+                "display": "Diagnose",
+                "system": "fdpg.mii.cds",
+                "version": "1.0.0"
+              },
+              "termCodes": [
+                {
+                  "code": "S14.11",
+                  "display": "",
+                  "system": "http://fhir.de/CodeSystem/bfarm/icd-10-gm"
+                }
+              ],
+              "timeRestriction": {
+                "afterDate": "2023-02-01",
+                "beforeDate": "2023-02-28"
               }
-            ],
-            "timeRestriction": {
-              "afterDate": "2023-02-01",
-              "beforeDate": "2023-02-28"
             }
-          }
+          ]
         ]
-      ]
-    }
+      }
+    ]
   ]
 }

@@ -2,27 +2,29 @@
   "version": "https://medizininformatik-initiative.de/fdpg/StructuredQuery/v3/schema",
   "display": "",
   "inclusionCriteria": [
-    {
-      "criteria": [
-        [
-          {
-            "termCodes": [
-              {
-                "code": "726427004",
-                "display": "Lobectomy of upper lobe of left lung",
-                "system": "http://snomed.info/sct",
-                "version": "http://snomed.info/sct/900000000000207008/version/20230731"
+    [
+      {
+        "criteria": [
+          [
+            {
+              "termCodes": [
+                {
+                  "code": "726427004",
+                  "display": "Lobectomy of upper lobe of left lung",
+                  "system": "http://snomed.info/sct",
+                  "version": "http://snomed.info/sct/900000000000207008/version/20230731"
+                }
+              ],
+              "context": {
+                "code": "Procedure",
+                "display": "Prozedur",
+                "system": "fdpg.mii.cds",
+                "version": "1.0.0"
               }
-            ],
-            "context": {
-              "code": "Procedure",
-              "display": "Prozedur",
-              "system": "fdpg.mii.cds",
-              "version": "1.0.0"
             }
-          }
+          ]
         ]
-      ]
-    }
+      }
+    ]
   ]
 }

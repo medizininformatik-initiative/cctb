@@ -13,46 +13,60 @@ import java.util.stream.Stream;
 
 /**
  * @author Alexander Kiel
+ * <p>
+ * {@code inclusionCriteria}/{@code exclusionCriteria} are each an OR-array of <em>bundles</em> - an AND-array of
+ * {@link Group Groups}, every one of which is unconditionally required for that bundle to be satisfied. A group
+ * referenced via {@code anchorRef} from a group in a *different* bundle contributes only its resolved date there,
+ * never its own truth - requiredness follows bundle membership, not referenceability. Both sides are uniformly
+ * OR-of-AND; see the CCDL relative-time-constraint draft, section 1 and 3, for the full reasoning.
  */
 @JsonIgnoreProperties(ignoreUnknown = true)
-public record StructuredQuery(List<Group> inclusionCriteria, List<Group> exclusionCriteria) {
+public record StructuredQuery(List<List<Group>> inclusionCriteria, List<List<Group>> exclusionCriteria) {
 
     public StructuredQuery {
-        inclusionCriteria = List.copyOf(inclusionCriteria);
-        exclusionCriteria = List.copyOf(exclusionCriteria);
+        inclusionCriteria = inclusionCriteria.stream().map(List::copyOf).toList();
+        exclusionCriteria = exclusionCriteria.stream().map(List::copyOf).toList();
     }
 
-    public static StructuredQuery of(List<Group> inclusionCriteria) {
+    public static StructuredQuery of(List<List<Group>> inclusionCriteria) {
         return of(inclusionCriteria, List.of());
     }
 
     @JsonCreator
-    public static StructuredQuery of(@JsonProperty("inclusionCriteria") List<Group> inclusionCriteria,
-                                     @JsonProperty("exclusionCriteria") List<Group> exclusionCriteria) {
+    public static StructuredQuery of(@JsonProperty("inclusionCriteria") List<List<Group>> inclusionCriteria,
+                                     @JsonProperty("exclusionCriteria") List<List<Group>> exclusionCriteria) {
         if (inclusionCriteria == null || inclusionCriteria.isEmpty()) {
             throw new IllegalArgumentException("empty inclusion criteria");
         }
-        var resolvedExclusionCriteria = exclusionCriteria == null ? List.<Group>of() : exclusionCriteria;
+        if (inclusionCriteria.stream().anyMatch(bundle -> bundle == null || bundle.isEmpty())) {
+            throw new IllegalArgumentException("empty bundle in inclusion criteria");
+        }
+        var resolvedExclusionCriteria = exclusionCriteria == null ? List.<List<Group>>of() : exclusionCriteria;
+        if (resolvedExclusionCriteria.stream().anyMatch(bundle -> bundle == null || bundle.isEmpty())) {
+            throw new IllegalArgumentException("empty bundle in exclusion criteria");
+        }
         validate(inclusionCriteria, resolvedExclusionCriteria);
         return new StructuredQuery(inclusionCriteria, resolvedExclusionCriteria);
     }
 
     /**
      * Validates cross-group invariants that a single {@link Group} cannot check on its own: unique ids across the
-     * whole document, every {@code anchorRef} resolving to a known id, the {@code anchorRef} graph being acyclic,
-     * and every group used as an anchor having {@code anchorOccurrence} set (unless its sole criterion is
-     * {@code now}, which has exactly one occurrence by definition).
+     * whole document, every {@code anchorRef} (of every entry of every group's {@code relativeTimeRestrictions})
+     * resolving to a known id, the {@code anchorRef} graph being acyclic, and every group used as an anchor
+     * having {@code anchorOccurrence} set (unless its sole criterion is {@code now}, which has exactly one
+     * occurrence by definition).
      * <p>
      * An anchor group may have multiple (AND'd) clauses - see {@link Group}'s {@code AnchorDates} design note for
      * how a dependent's window is computed asymmetrically across them (earliest clause bounds {@code maxOffset},
      * latest bounds {@code minOffset}) rather than requiring a single unambiguous witness resource.
      * <p>
-     * A {@link RelativeTimeRestriction} always targets exactly one {@code anchorRef} (it is a single
-     * {@code String}), so "multiple anchors per dependent group" is unsupported by construction and needs no
-     * explicit check here.
+     * A group's {@code relativeTimeRestrictions} may hold more than one entry, each with its own {@code
+     * anchorRef} - so a single group can now have multiple outgoing anchor edges, not just one. Cycle detection
+     * (see {@link #detectCycle}) explores all of them.
      */
-    private static void validate(List<Group> inclusionCriteria, List<Group> exclusionCriteria) {
-        var allGroups = Stream.concat(inclusionCriteria.stream(), exclusionCriteria.stream()).toList();
+    private static void validate(List<List<Group>> inclusionCriteria, List<List<Group>> exclusionCriteria) {
+        var allGroups = Stream.concat(inclusionCriteria.stream(), exclusionCriteria.stream())
+                .flatMap(List::stream).toList();
 
         var seenIds = new HashSet<String>();
         for (var group : allGroups) {
@@ -70,15 +84,17 @@ public record StructuredQuery(List<Group> inclusionCriteria, List<Group> exclusi
 
         var referencedAsAnchor = new HashSet<String>();
         for (var group : allGroups) {
-            var relativeTimeRestriction = group.relativeTimeRestriction();
-            if (relativeTimeRestriction != null) {
-                var anchorRef = relativeTimeRestriction.anchorRef();
-                var anchor = groupsById.get(anchorRef);
-                if (anchor == null) {
-                    throw new IllegalArgumentException("Unknown anchorRef `%s`%s.".formatted(anchorRef,
-                            group.id() == null ? "" : " in group `%s`".formatted(group.id())));
+            var relativeTimeRestrictions = group.relativeTimeRestrictions();
+            if (relativeTimeRestrictions != null) {
+                for (var relativeTimeRestriction : relativeTimeRestrictions) {
+                    var anchorRef = relativeTimeRestriction.anchorRef();
+                    var anchor = groupsById.get(anchorRef);
+                    if (anchor == null) {
+                        throw new IllegalArgumentException("Unknown anchorRef `%s`%s.".formatted(anchorRef,
+                                group.id() == null ? "" : " in group `%s`".formatted(group.id())));
+                    }
+                    referencedAsAnchor.add(anchorRef);
                 }
-                referencedAsAnchor.add(anchorRef);
             }
         }
 
@@ -104,9 +120,11 @@ public record StructuredQuery(List<Group> inclusionCriteria, List<Group> exclusi
                     "Cyclic anchorRef graph detected: %s -> %s.".formatted(String.join(" -> ", path), groupId));
         }
         var group = groupsById.get(groupId);
-        var relativeTimeRestriction = group == null ? null : group.relativeTimeRestriction();
-        if (relativeTimeRestriction != null) {
-            detectCycle(relativeTimeRestriction.anchorRef(), groupsById, path);
+        var relativeTimeRestrictions = group == null ? null : group.relativeTimeRestrictions();
+        if (relativeTimeRestrictions != null) {
+            for (var relativeTimeRestriction : relativeTimeRestrictions) {
+                detectCycle(relativeTimeRestriction.anchorRef(), groupsById, path);
+            }
         }
         path.remove(groupId);
     }

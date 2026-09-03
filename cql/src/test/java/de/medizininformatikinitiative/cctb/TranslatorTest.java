@@ -118,7 +118,7 @@ class TranslatorTest {
 
         @Test
         void nonExpandableConcept() {
-            var structuredQuery = StructuredQuery.of(List.of(Group.of(List.of(List.of(ConceptCriterion.of(ContextualConcept.of(C71)))))));
+            var structuredQuery = StructuredQuery.of(List.of(List.of(Group.of(List.of(List.of(ConceptCriterion.of(ContextualConcept.of(C71))))))));
 
             var message = assertThrows(TranslationException.class, () -> Translator.of().toCql(structuredQuery)).getMessage();
 
@@ -134,7 +134,7 @@ class TranslatorTest {
 
             var group = Group.of(List.of(List.of(ConceptCriterion.of(ContextualConcept.of(C71)))));
             var message = assertThrows(TranslationException.class, () -> Translator.of(mappingContext)
-                    .toCql(StructuredQuery.of(List.of(group)))).getMessage();
+                    .toCql(StructuredQuery.of(List.of(List.of(group))))).getMessage();
 
             assertEquals(
                     "Failed to expand the concept ContextualConcept[context=TermCode[system=context, code=context, display=context], concept=Concept[termCodes=[TermCode[system=http://fhir.de/CodeSystem/bfarm/icd-10-gm, code=C71, display=Malignant neoplasm of brain]]]].",
@@ -152,7 +152,7 @@ class TranslatorTest {
             var mappingContext = MappingContext.of(mappings, conceptTree, codeSystemAliases);
 
             var library = Translator.of(mappingContext).toCql(
-                    StructuredQuery.of(List.of(Group.of(List.of(List.of(ConceptCriterion.of(ContextualConcept.of(c71_1))))))));
+                    StructuredQuery.of(List.of(List.of(Group.of(List.of(List.of(ConceptCriterion.of(ContextualConcept.of(c71_1)))))))));
 
             assertThat(library).printsTo("""
                     library Retrieve version '1.0.0'
@@ -182,9 +182,9 @@ class TranslatorTest {
             var codeSystemAliases = Map.of("http://fhir.de/CodeSystem/bfarm/icd-10-gm", "icd10");
             var mappingContext = MappingContext.of(mappings, conceptTree, codeSystemAliases);
 
-            var library = Translator.of(mappingContext).toCql(StructuredQuery.of(List.of(Group.of(List.of(List.of(
+            var library = Translator.of(mappingContext).toCql(StructuredQuery.of(List.of(List.of(Group.of(List.of(List.of(
                     ConceptCriterion.of(ContextualConcept.of(c71_1),
-                            TimeRestriction.of(LocalDate.of(2020, 1, 1), LocalDate.of(2020, 1, 2)))))))));
+                            TimeRestriction.of(LocalDate.of(2020, 1, 1), LocalDate.of(2020, 1, 2))))))))));
 
             assertThat(library).printsTo("""
                     library Retrieve version '1.0.0'
@@ -217,7 +217,7 @@ class TranslatorTest {
             var mappingContext = MappingContext.of(mappings, conceptTree, codeSystemAliases);
             var group = Group.of(List.of(List.of(ConceptCriterion.of(ContextualConcept.of(c71_1),
                     TimeRestriction.of(LocalDate.of(2020, 1, 1), LocalDate.of(2020, 1, 2))))));
-            var query = StructuredQuery.of(List.of(group));
+            var query = StructuredQuery.of(List.of(List.of(group)));
             var translator = Translator.of(mappingContext);
 
             assertThatIllegalStateException().isThrownBy(() -> translator.toCql(query)).withMessage(
@@ -242,7 +242,7 @@ class TranslatorTest {
                     List.of(
                             NumericCriterion.of(ContextualConcept.of(PLATELETS), LESS_THAN, BigDecimal.valueOf(50),
                                     "g/dl")), List.of(ConceptCriterion.of(ContextualConcept.of(TMZ)))));
-            var structuredQuery = StructuredQuery.of(List.of(group));
+            var structuredQuery = StructuredQuery.of(List.of(List.of(group)));
 
             var library = Translator.of(mappingContext).toCql(structuredQuery);
 
@@ -250,7 +250,7 @@ class TranslatorTest {
                     library Retrieve version '1.0.0'
                     using FHIR version '4.0.0'
                     include FHIRHelpers version '4.0.0'
-                    
+
                     codesystem atc: 'http://fhir.de/CodeSystem/dimdi/atc'
                     codesystem icd10: 'http://fhir.de/CodeSystem/bfarm/icd-10-gm'
                     codesystem loinc: 'http://loinc.org'
@@ -300,7 +300,7 @@ class TranslatorTest {
                                             .appendAttributeFilter(ValueSetAttributeFilter.of(VERIFICATION_STATUS, CONFIRMED))),
                             List.of(ConceptCriterion.of(ContextualConcept.of(SERUM)))));
             var exclusionGroup = Group.of(List.of(List.of(ConceptCriterion.of(ContextualConcept.of(LIPID)))));
-            var structuredQuery = StructuredQuery.of(List.of(inclusionGroup), List.of(exclusionGroup));
+            var structuredQuery = StructuredQuery.of(List.of(List.of(inclusionGroup)), List.of(List.of(exclusionGroup)));
 
             var library = Translator.of(mappingContext).toCql(structuredQuery);
 
@@ -363,7 +363,7 @@ class TranslatorTest {
                             ConceptCriterion.of(ContextualConcept.of(G47_31))), List.of(
                             ValueSetCriterion.of(ContextualConcept.of(TOBACCO_SMOKING_STATUS),
                                     CURRENT_EVERY_DAY_SMOKER))));
-            var structuredQuery = StructuredQuery.of(List.of(inclusionGroup), List.of(exclusionGroup));
+            var structuredQuery = StructuredQuery.of(List.of(List.of(inclusionGroup)), List.of(List.of(exclusionGroup)));
 
             var library = Translator.of(mappingContext).toCql(structuredQuery);
 
@@ -475,7 +475,7 @@ class TranslatorTest {
                     {
                       "version": "https://medizininformatik-initiative.de/fdpg/StructuredQuery/v3/schema",
                       "display": "",
-                      "inclusionCriteria": [
+                      "inclusionCriteria": [[
                         {
                           "criteria": [
                             [
@@ -496,7 +496,7 @@ class TranslatorTest {
                             ]
                           ]
                         }
-                      ]
+                      ]]
                     }
                     """);
 
@@ -551,7 +551,7 @@ class TranslatorTest {
                     {
                       "version": "https://medizininformatik-initiative.de/fdpg/StructuredQuery/v3/schema",
                       "display": "",
-                      "inclusionCriteria": [
+                      "inclusionCriteria": [[
                         {
                           "criteria": [
                             [
@@ -582,7 +582,7 @@ class TranslatorTest {
                             ]
                           ]
                         }
-                      ]
+                      ]]
                     }
                     """);
             var conceptTree = createTreeWithoutChildren(AGE);
@@ -632,7 +632,7 @@ class TranslatorTest {
                     {
                       "version": "https://medizininformatik-initiative.de/fdpg/StructuredQuery/v3/schema",
                       "display": "",
-                      "inclusionCriteria": [
+                      "inclusionCriteria": [[
                         {
                           "criteria": [
                             [
@@ -663,7 +663,7 @@ class TranslatorTest {
                             ]
                           ]
                         }
-                      ]
+                      ]]
                     }
                     """);
             var conceptTree = createTreeWithoutChildren(AGE);
@@ -713,7 +713,7 @@ class TranslatorTest {
                     {
                       "version": "https://medizininformatik-initiative.de/fdpg/StructuredQuery/v3/schema",
                       "display": "",
-                      "inclusionCriteria": [
+                      "inclusionCriteria": [[
                         {
                           "criteria": [
                             [
@@ -744,7 +744,7 @@ class TranslatorTest {
                             ]
                           ]
                         }
-                      ]
+                      ]]
                     }
                     """);
             var conceptTree = createTreeWithoutChildren(AGE);
@@ -796,7 +796,7 @@ class TranslatorTest {
                     {
                       "version": "https://medizininformatik-initiative.de/fdpg/StructuredQuery/v3/schema",
                       "display": "",
-                      "inclusionCriteria": [
+                      "inclusionCriteria": [[
                         {
                           "criteria": [
                             [
@@ -827,7 +827,7 @@ class TranslatorTest {
                             ]
                           ]
                         }
-                      ]
+                      ]]
                     }
                     """);
             var conceptTree = createTreeWithoutChildren(GENDER);
@@ -882,7 +882,7 @@ class TranslatorTest {
                     {
                       "version": "http://to_be_decided.com/draft-1/schema#",
                       "display": "",
-                      "inclusionCriteria": [
+                      "inclusionCriteria": [[
                         {
                           "criteria": [
                             [
@@ -904,7 +904,7 @@ class TranslatorTest {
                             ]
                           ]
                         }
-                      ]
+                      ]]
                     }
                     """);
             var conceptTree = createTreeWithoutChildren(CONSENT_MDAT);
@@ -962,7 +962,7 @@ class TranslatorTest {
                     {
                       "version": "http://to_be_decided.com/draft-1/schema#",
                       "display": "",
-                      "inclusionCriteria": [
+                      "inclusionCriteria": [[
                         {
                           "criteria": [
                             [
@@ -985,7 +985,7 @@ class TranslatorTest {
                             ]
                           ]
                         }
-                      ]
+                      ]]
                     }
                     """);
             var conceptTree = createTreeWithoutChildren(ENCOUNTER_CLASS);
@@ -1045,7 +1045,7 @@ class TranslatorTest {
                     {
                       "version": "https://medizininformatik-initiative.de/fdpg/StructuredQuery/v3/schema",
                       "display": "",
-                      "inclusionCriteria": [
+                      "inclusionCriteria": [[
                         {
                           "criteria": [
                             [
@@ -1082,7 +1082,7 @@ class TranslatorTest {
                             ]
                           ]
                         }
-                      ]
+                      ]]
                     }
                     """);
             var conceptTree = createTreeWithoutChildren(BLOOD_PRESSURE);
@@ -1114,13 +1114,13 @@ class TranslatorTest {
 
             @Test
             void oneDisjunctionWithOneCriterion() {
-                var structuredQuery = StructuredQuery.of(List.of(Group.of(List.of(List.of(Criterion.TRUE)))));
+                var structuredQuery = StructuredQuery.of(List.of(List.of(Group.of(List.of(List.of(Criterion.TRUE))))));
 
                 var library = Translator.of().toCql(structuredQuery);
 
                 assertThat(library).patientContextPrintsTo("""
                         context Patient
-                        
+
                         define Criterion:
                           true
                         
@@ -1131,7 +1131,7 @@ class TranslatorTest {
 
             @Test
             void oneDisjunctionWithTwoCriteria() {
-                var structuredQuery = StructuredQuery.of(List.of(Group.of(List.of(List.of(Criterion.TRUE, Criterion.FALSE)))));
+                var structuredQuery = StructuredQuery.of(List.of(List.of(Group.of(List.of(List.of(Criterion.TRUE, Criterion.FALSE))))));
 
                 var library = Translator.of().toCql(structuredQuery);
 
@@ -1152,7 +1152,7 @@ class TranslatorTest {
 
             @Test
             void twoDisjunctionsWithOneCriterionEach() {
-                var structuredQuery = StructuredQuery.of(List.of(Group.of(List.of(List.of(Criterion.TRUE), List.of(Criterion.FALSE)))));
+                var structuredQuery = StructuredQuery.of(List.of(List.of(Group.of(List.of(List.of(Criterion.TRUE), List.of(Criterion.FALSE))))));
 
                 var library = Translator.of().toCql(structuredQuery);
 
@@ -1173,8 +1173,8 @@ class TranslatorTest {
 
             @Test
             void twoDisjunctionsWithTwoCriterionEach() {
-                var structuredQuery = StructuredQuery.of(List.of(Group.of(List.of(List.of(Criterion.TRUE, Criterion.TRUE),
-                        List.of(Criterion.FALSE, Criterion.FALSE)))));
+                var structuredQuery = StructuredQuery.of(List.of(List.of(Group.of(List.of(List.of(Criterion.TRUE, Criterion.TRUE),
+                        List.of(Criterion.FALSE, Criterion.FALSE))))));
 
                 var library = Translator.of().toCql(structuredQuery);
 
@@ -1207,8 +1207,8 @@ class TranslatorTest {
 
             @Test
             void oneConjunctionWithOneCriterion() {
-                var structuredQuery = StructuredQuery.of(List.of(Group.of(List.of(List.of(Criterion.TRUE)))),
-                        List.of(Group.of(List.of(List.of(Criterion.FALSE)))));
+                var structuredQuery = StructuredQuery.of(List.of(List.of(Group.of(List.of(List.of(Criterion.TRUE))))),
+                        List.of(List.of(Group.of(List.of(List.of(Criterion.FALSE))))));
 
                 var library = Translator.of().toCql(structuredQuery);
 
@@ -1235,8 +1235,8 @@ class TranslatorTest {
 
             @Test
             void oneConjunctionWithTwoCriteria() {
-                var structuredQuery = StructuredQuery.of(List.of(Group.of(List.of(List.of(Criterion.TRUE)))),
-                        List.of(Group.of(List.of(List.of(Criterion.FALSE, Criterion.FALSE)))));
+                var structuredQuery = StructuredQuery.of(List.of(List.of(Group.of(List.of(List.of(Criterion.TRUE))))),
+                        List.of(List.of(Group.of(List.of(List.of(Criterion.FALSE, Criterion.FALSE))))));
 
                 var library = Translator.of().toCql(structuredQuery);
 
@@ -1267,8 +1267,8 @@ class TranslatorTest {
 
             @Test
             void twoConjunctionsWithOneCriterionEach() {
-                var structuredQuery = StructuredQuery.of(List.of(Group.of(List.of(List.of(Criterion.TRUE)))),
-                        List.of(Group.of(List.of(List.of(Criterion.TRUE), List.of(Criterion.FALSE)))));
+                var structuredQuery = StructuredQuery.of(List.of(List.of(Group.of(List.of(List.of(Criterion.TRUE))))),
+                        List.of(List.of(Group.of(List.of(List.of(Criterion.TRUE), List.of(Criterion.FALSE))))));
 
 
                 var library = Translator.of().toCql(structuredQuery);
@@ -1300,9 +1300,9 @@ class TranslatorTest {
 
             @Test
             void twoConjunctionsWithTwoCriterionEach() {
-                var structuredQuery = StructuredQuery.of(List.of(Group.of(List.of(List.of(Criterion.TRUE)))),
-                        List.of(Group.of(List.of(List.of(Criterion.FALSE, Criterion.FALSE),
-                                List.of(Criterion.FALSE, Criterion.FALSE)))));
+                var structuredQuery = StructuredQuery.of(List.of(List.of(Group.of(List.of(List.of(Criterion.TRUE))))),
+                        List.of(List.of(Group.of(List.of(List.of(Criterion.FALSE, Criterion.FALSE),
+                                List.of(Criterion.FALSE, Criterion.FALSE))))));
 
                 var library = Translator.of().toCql(structuredQuery);
 
@@ -1341,8 +1341,8 @@ class TranslatorTest {
 
             @Test
             void twoInclusionAndTwoExclusionCriteria() {
-                var structuredQuery = StructuredQuery.of(List.of(Group.of(List.of(List.of(Criterion.TRUE), List.of(Criterion.FALSE)))),
-                        List.of(Group.of(List.of(List.of(Criterion.TRUE, Criterion.FALSE)))));
+                var structuredQuery = StructuredQuery.of(List.of(List.of(Group.of(List.of(List.of(Criterion.TRUE), List.of(Criterion.FALSE))))),
+                        List.of(List.of(Group.of(List.of(List.of(Criterion.TRUE, Criterion.FALSE))))));
 
                 var library = Translator.of().toCql(structuredQuery);
 
@@ -1482,6 +1482,15 @@ class TranslatorTest {
                 return MappingContext.of(mappings, conceptTree, CODE_SYSTEM_ALIASES);
             }
 
+            /**
+             * The anchor's own criteria ({@code exists [Condition: Code 'F00' ...]}) are NOT re-emitted here even
+             * though {@code anchor-dementia-diagnosis} is a bundle member alongside its dependent: {@code
+             * Translator.bundleExpr}'s {@code subsumedByItsOwnGuardWithinThisBundle} check recognizes that its
+             * dependent already ANDs in the guard ({@code "AnchorDate_..." is not null}), which provably implies
+             * (and, ANDed together, equals) the anchor's own criteria - see the design note on {@code
+             * Translator.bundleExpr} for the full argument. So the anchor contributes only its resolved date here,
+             * never a separate, redundant existence check.
+             */
             @Test
             void simpleAnchorAndOneDependent() {
                 var anchor = Group.of("anchor-dementia-diagnosis",
@@ -1490,7 +1499,7 @@ class TranslatorTest {
                 var dependent = Group.of("group-crp-before-diagnosis",
                         List.of(List.of(ConceptCriterion.of(ContextualConcept.of(CRP)))),
                         RelativeTimeRestriction.of("anchor-dementia-diagnosis", Duration.ofHours(-72), Duration.ZERO));
-                var structuredQuery = StructuredQuery.of(List.of(anchor, dependent));
+                var structuredQuery = StructuredQuery.of(List.of(List.of(anchor, dependent)));
 
                 var library = Translator.of(mappingContext(DIAGNOSIS, CRP)).toCql(structuredQuery);
 
@@ -1504,21 +1513,17 @@ class TranslatorTest {
 
                         context Patient
 
-                        define "Criterion 1":
-                          exists [Condition: Code 'F00' from icd10]
-
                         define "AnchorDate_anchor-dementia-diagnosis":
                           Min(from [Condition: Code 'F00' from icd10] C
                             return ToDate(C.onset as dateTime))
 
-                        define "Criterion 2":
+                        define Criterion:
                           exists (from [Observation: Code '1988-5' from loinc] O
                             where ToDate(O.effective as dateTime) in Interval["AnchorDate_anchor-dementia-diagnosis" + -72 hours, "AnchorDate_anchor-dementia-diagnosis" + 0 hours])
 
                         define InInitialPopulation:
-                          "Criterion 1" and
                           "AnchorDate_anchor-dementia-diagnosis" is not null and
-                          "Criterion 2"
+                          Criterion
                         """);
             }
 
@@ -1533,16 +1538,14 @@ class TranslatorTest {
                 var dependent2 = Group.of("group-leukocytes-before-diagnosis",
                         List.of(List.of(ConceptCriterion.of(ContextualConcept.of(LEUKOCYTES)))),
                         RelativeTimeRestriction.of("anchor-dementia-diagnosis", Duration.ofHours(-72), Duration.ZERO));
-                var structuredQuery = StructuredQuery.of(List.of(anchor, dependent1, dependent2));
+                var structuredQuery = StructuredQuery.of(List.of(List.of(anchor, dependent1, dependent2)));
 
                 var library = Translator.of(mappingContext(DIAGNOSIS, CRP, LEUKOCYTES)).toCql(structuredQuery);
 
-                // Each dependent now resolves its own anchor date exactly once (see AnchorDate_... defines below)
-                // instead of twice (one copy per bound). Across dependents, though, it is still NOT fully shared:
-                // the two "AnchorDate_anchor-dementia-diagnosis" defines get suffixed apart (`1`/`2`) rather than
-                // collapsed into one, because Container's combiner treats any same-name collision between two
-                // independently-built containers as needing disambiguation, not as a candidate for content-based
-                // dedup - a deeper fix than the per-dependent one applied here.
+                // Each dependent resolves its own anchor date exactly once (see the single AnchorDate_... define
+                // below) and, since both dependents resolve the *same* anchor id to byte-identical content, the
+                // two independently-built containers' copies collapse into one shared define - see the design
+                // note on Group.aggregateClauseDates for why moveToPatientContextWithUniqueName makes this safe.
                 assertThat(library).printsTo("""
                         library Retrieve version '1.0.0'
                         using FHIR version '4.0.0'
@@ -1553,31 +1556,23 @@ class TranslatorTest {
 
                         context Patient
 
-                        define "Criterion 1":
-                          exists [Condition: Code 'F00' from icd10]
-
-                        define "AnchorDate_anchor-dementia-diagnosis 1":
+                        define "AnchorDate_anchor-dementia-diagnosis":
                           Min(from [Condition: Code 'F00' from icd10] C
                             return ToDate(C.onset as dateTime))
+
+                        define "Criterion 1":
+                          exists (from [Observation: Code '1988-5' from loinc] O
+                            where ToDate(O.effective as dateTime) in Interval["AnchorDate_anchor-dementia-diagnosis" + -72 hours, "AnchorDate_anchor-dementia-diagnosis" + 0 hours])
 
                         define "Criterion 2":
-                          exists (from [Observation: Code '1988-5' from loinc] O
-                            where ToDate(O.effective as dateTime) in Interval["AnchorDate_anchor-dementia-diagnosis 1" + -72 hours, "AnchorDate_anchor-dementia-diagnosis 1" + 0 hours])
-
-                        define "AnchorDate_anchor-dementia-diagnosis 2":
-                          Min(from [Condition: Code 'F00' from icd10] C
-                            return ToDate(C.onset as dateTime))
-
-                        define "Criterion 3":
                           exists (from [Observation: Code '6690-2' from loinc] O
-                            where ToDate(O.effective as dateTime) in Interval["AnchorDate_anchor-dementia-diagnosis 2" + -72 hours, "AnchorDate_anchor-dementia-diagnosis 2" + 0 hours])
+                            where ToDate(O.effective as dateTime) in Interval["AnchorDate_anchor-dementia-diagnosis" + -72 hours, "AnchorDate_anchor-dementia-diagnosis" + 0 hours])
 
                         define InInitialPopulation:
+                          "AnchorDate_anchor-dementia-diagnosis" is not null and
                           "Criterion 1" and
-                          "AnchorDate_anchor-dementia-diagnosis 1" is not null and
-                          "Criterion 2" and
-                          "AnchorDate_anchor-dementia-diagnosis 2" is not null and
-                          "Criterion 3"
+                          "AnchorDate_anchor-dementia-diagnosis" is not null and
+                          "Criterion 2"
                         """);
             }
 
@@ -1587,7 +1582,7 @@ class TranslatorTest {
                 var dependent = Group.of("group-crp-since-now",
                         List.of(List.of(ConceptCriterion.of(ContextualConcept.of(CRP)))),
                         RelativeTimeRestriction.of("anchor-now", Duration.ofHours(-168), Duration.ZERO));
-                var structuredQuery = StructuredQuery.of(List.of(anchor, dependent));
+                var structuredQuery = StructuredQuery.of(List.of(List.of(anchor, dependent)));
 
                 var library = Translator.of(mappingContext(DIAGNOSIS, CRP)).toCql(structuredQuery);
 
@@ -1600,20 +1595,16 @@ class TranslatorTest {
 
                         context Patient
 
-                        define "Criterion 1":
-                          true
-
                         define "AnchorDate_anchor-now":
                           Min({ Now() })
 
-                        define "Criterion 2":
+                        define Criterion:
                           exists (from [Observation: Code '1988-5' from loinc] O
                             where ToDate(O.effective as dateTime) in Interval["AnchorDate_anchor-now" + -168 hours, "AnchorDate_anchor-now" + 0 hours])
 
                         define InInitialPopulation:
-                          "Criterion 1" and
                           "AnchorDate_anchor-now" is not null and
-                          "Criterion 2"
+                          Criterion
                         """);
             }
 
@@ -1625,7 +1616,7 @@ class TranslatorTest {
                 var dependent = Group.of("group-crp-since-diagnosis",
                         List.of(List.of(ConceptCriterion.of(ContextualConcept.of(CRP)))),
                         RelativeTimeRestriction.of("anchor-dementia-diagnosis", Duration.ofHours(-168), null));
-                var structuredQuery = StructuredQuery.of(List.of(anchor, dependent));
+                var structuredQuery = StructuredQuery.of(List.of(List.of(anchor, dependent)));
 
                 var library = Translator.of(mappingContext(DIAGNOSIS, CRP)).toCql(structuredQuery);
 
@@ -1639,21 +1630,17 @@ class TranslatorTest {
 
                         context Patient
 
-                        define "Criterion 1":
-                          exists [Condition: Code 'F00' from icd10]
-
                         define "AnchorDate_anchor-dementia-diagnosis":
                           Min(from [Condition: Code 'F00' from icd10] C
                             return ToDate(C.onset as dateTime))
 
-                        define "Criterion 2":
+                        define Criterion:
                           exists (from [Observation: Code '1988-5' from loinc] O
                             where ToDate(O.effective as dateTime) in Interval["AnchorDate_anchor-dementia-diagnosis" + -168 hours, @9999-12-31T])
 
                         define InInitialPopulation:
-                          "Criterion 1" and
                           "AnchorDate_anchor-dementia-diagnosis" is not null and
-                          "Criterion 2"
+                          Criterion
                         """);
             }
 
@@ -1665,7 +1652,7 @@ class TranslatorTest {
                 var dependent = Group.of("group-crp-after-diagnosis",
                         List.of(List.of(ConceptCriterion.of(ContextualConcept.of(CRP)))),
                         RelativeTimeRestriction.of("anchor-dementia-diagnosis", null, Duration.ofHours(720)));
-                var structuredQuery = StructuredQuery.of(List.of(anchor, dependent));
+                var structuredQuery = StructuredQuery.of(List.of(List.of(anchor, dependent)));
 
                 var library = Translator.of(mappingContext(DIAGNOSIS, CRP)).toCql(structuredQuery);
 
@@ -1679,21 +1666,17 @@ class TranslatorTest {
 
                         context Patient
 
-                        define "Criterion 1":
-                          exists [Condition: Code 'F00' from icd10]
-
                         define "AnchorDate_anchor-dementia-diagnosis":
                           Min(from [Condition: Code 'F00' from icd10] C
                             return ToDate(C.onset as dateTime))
 
-                        define "Criterion 2":
+                        define Criterion:
                           exists (from [Observation: Code '1988-5' from loinc] O
                             where ToDate(O.effective as dateTime) in Interval[@0001-01-01T, "AnchorDate_anchor-dementia-diagnosis" + 720 hours])
 
                         define InInitialPopulation:
-                          "Criterion 1" and
                           "AnchorDate_anchor-dementia-diagnosis" is not null and
-                          "Criterion 2"
+                          Criterion
                         """);
             }
 
@@ -1707,20 +1690,21 @@ class TranslatorTest {
                 var dependent = Group.of("group-crp-before-diagnosis",
                         List.of(List.of(ConceptCriterion.of(ContextualConcept.of(CRP)))),
                         RelativeTimeRestriction.of("group-diagnosis-since-now", Duration.ofHours(-24), Duration.ZERO));
-                var structuredQuery = StructuredQuery.of(List.of(anchorNow, middle, dependent));
+                var structuredQuery = StructuredQuery.of(List.of(List.of(anchorNow, middle, dependent)));
 
                 var library = Translator.of(mappingContext(DIAGNOSIS, CRP)).toCql(structuredQuery);
 
-                // The chain resolves "anchor-now" once per independently-built container (its own define, deduped
-                // within each), but "group-diagnosis-since-now" (the middle group) needs it twice - once for its
-                // own Criterion 2 existence check, once when it is itself resolved as the dependent's anchor -
-                // which are two separately-built containers, so (per the same cross-container limitation noted in
-                // fanOutTwoDependentsOnOneAnchor) "AnchorDate_anchor-now" ends up suffixed apart (`1`/`2`) rather
-                // than shared.
+                // "anchor-now"'s own criterion ("true") is dropped: it's subsumed by its dependent "middle"'s guard
+                // (subsumedByItsOwnGuardWithinThisBundle, see Translator.bundleExpr) since it has no
+                // relativeTimeRestrictions of its own. "middle" ("group-diagnosis-since-now") is NOT subsumed the
+                // same way even though ITS OWN dependent references it too - it DOES carry
+                // relativeTimeRestrictions (it's itself chained off anchor-now), which is deliberately excluded
+                // from the optimization (see the design note on Translator.bundleExpr) - so its own window-filtered
+                // existence check ("Criterion 1" here) still appears normally.
                 //
-                // Note the guard only appears once here, on Criterion 2 - not on "AnchorDate_anchor-now 2", which
-                // feeds AnchorDate_group-diagnosis-since-now's own candidate filtering via the chaining path in
-                // resolveAnchorDates. That path doesn't yet apply the guard (see the comment there); only the
+                // Note the guard only appears once here, on Criterion 1 - not on "AnchorDate_anchor-now"'s own
+                // reference inside AnchorDate_group-diagnosis-since-now's candidate filtering via the chaining path
+                // in resolveAnchorDates. That path doesn't yet apply the guard (see the comment there); only the
                 // final criterion-matching path in combineCriteria does. Known, scoped-out gap for chained anchors.
                 assertThat(library).printsTo("""
                         library Retrieve version '1.0.0'
@@ -1732,34 +1716,27 @@ class TranslatorTest {
 
                         context Patient
 
+                        define "AnchorDate_anchor-now":
+                          Min({ Now() })
+
                         define "Criterion 1":
-                          true
-
-                        define "AnchorDate_anchor-now 1":
-                          Min({ Now() })
-
-                        define "Criterion 2":
                           exists (from [Condition: Code 'F00' from icd10] C
-                            where ToDate(C.onset as dateTime) in Interval["AnchorDate_anchor-now 1" + -720 hours, @9999-12-31T])
-
-                        define "AnchorDate_anchor-now 2":
-                          Min({ Now() })
+                            where ToDate(C.onset as dateTime) in Interval["AnchorDate_anchor-now" + -720 hours, @9999-12-31T])
 
                         define "AnchorDate_group-diagnosis-since-now":
                           Max(from [Condition: Code 'F00' from icd10] C
-                            where ToDate(C.onset as dateTime) in Interval["AnchorDate_anchor-now 2" + -720 hours, @9999-12-31T]
+                            where ToDate(C.onset as dateTime) in Interval["AnchorDate_anchor-now" + -720 hours, @9999-12-31T]
                             return ToDate(C.onset as dateTime))
 
-                        define "Criterion 3":
+                        define "Criterion 2":
                           exists (from [Observation: Code '1988-5' from loinc] O
                             where ToDate(O.effective as dateTime) in Interval["AnchorDate_group-diagnosis-since-now" + -24 hours, "AnchorDate_group-diagnosis-since-now" + 0 hours])
 
                         define InInitialPopulation:
+                          "AnchorDate_anchor-now" is not null and
                           "Criterion 1" and
-                          "AnchorDate_anchor-now 1" is not null and
-                          "Criterion 2" and
                           "AnchorDate_group-diagnosis-since-now" is not null and
-                          "Criterion 3"
+                          "Criterion 2"
                         """);
             }
 
@@ -1791,7 +1768,7 @@ class TranslatorTest {
                 var dependent = Group.of("group-crp-after-procedure",
                         List.of(List.of(ConceptCriterion.of(ContextualConcept.of(CRP)))),
                         RelativeTimeRestriction.of("anchor-procedure", Duration.ZERO, Duration.ofHours(24)));
-                var structuredQuery = StructuredQuery.of(List.of(anchor, dependent));
+                var structuredQuery = StructuredQuery.of(List.of(List.of(anchor, dependent)));
 
                 var library = Translator.of(mappingContext).toCql(structuredQuery);
 
@@ -1805,21 +1782,17 @@ class TranslatorTest {
 
                         context Patient
 
-                        define "Criterion 1":
-                          exists [Procedure: Code '5-812' from codeSystem1]
-
                         define "AnchorDate_anchor-procedure":
                           Min(from [Procedure: Code '5-812' from codeSystem1] P
                             return Coalesce(ToDate(P.performed as dateTime), ToDate((P.performed as Period).start)))
 
-                        define "Criterion 2":
+                        define Criterion:
                           exists (from [Observation: Code '1988-5' from loinc] O
                             where ToDate(O.effective as dateTime) in Interval["AnchorDate_anchor-procedure" + 0 hours, "AnchorDate_anchor-procedure" + 24 hours])
 
                         define InInitialPopulation:
-                          "Criterion 1" and
                           "AnchorDate_anchor-procedure" is not null and
-                          "Criterion 2"
+                          Criterion
                         """);
             }
 
@@ -1829,6 +1802,19 @@ class TranslatorTest {
              * the {@code maxOffset} bound (window end) to be built from {@code Min} across the two clauses, and
              * the {@code minOffset} bound (window start) from {@code Max} - the opposite of what a naive
              * single-collapsed-anchor-point implementation would produce.
+             * <p>
+             * Also covers the guard: {@code AnchorDate_anchor[0] is not null and AnchorDate_anchor[1] is not null},
+             * not {@code Min(...) is not null and Max(...) is not null} - see the design note on {@code
+             * AnchorDates} for why the latter is insufficient ({@code Min}/{@code Max} ignore null list elements
+             * rather than propagating, so it would only prove at least one of the two clauses resolved), and why
+             * per-index checks rather than a {@code not exists (... where D is null)} query (confirmed empirically
+             * against real Blaze: the nested query fails to detect a null list element sourced from a
+             * {@code Min}/{@code Max(retrieve)} aggregate).
+             * <p>
+             * Also covers {@code Translator.bundleExpr}'s redundant-criteria optimization on a multi-clause
+             * anchor: none of the anchor's own three leaf criteria (diagnosis, CRP, leukocytes) are re-emitted,
+             * since {@code AnchorDate_anchor[0]}/{@code [1] is not null} together provably imply the anchor's own
+             * "Criterion1 and (Criterion2 or Criterion3)" - see the design note on {@code Translator.bundleExpr}.
              */
             @Test
             void multiClauseAnchor() {
@@ -1853,7 +1839,7 @@ class TranslatorTest {
                         Group.AnchorOccurrence.FIRST);
                 var dependent = Group.of("dependent", List.of(List.of(ConceptCriterion.of(ContextualConcept.of(HEMOGLOBIN)))),
                         RelativeTimeRestriction.of("anchor", Duration.ZERO, Duration.ofHours(24)));
-                var structuredQuery = StructuredQuery.of(List.of(anchor, dependent));
+                var structuredQuery = StructuredQuery.of(List.of(List.of(anchor, dependent)));
 
                 var library = Translator.of(mappingContext).toCql(structuredQuery);
 
@@ -1867,15 +1853,6 @@ class TranslatorTest {
 
                         context Patient
 
-                        define "Criterion 1":
-                          exists [Condition: Code 'F00' from icd10]
-
-                        define "Criterion 2":
-                          exists [Observation: Code '1988-5' from loinc]
-
-                        define "Criterion 3":
-                          exists [Observation: Code '6690-2' from loinc]
-
                         define AnchorDate_anchor:
                           { Min(from [Condition: Code 'F00' from icd10] C
                             return ToDate(C.onset as dateTime)), Min((from [Observation: Code '1988-5' from loinc] O
@@ -1883,17 +1860,14 @@ class TranslatorTest {
                           (from [Observation: Code '6690-2' from loinc] O
                             return ToDate(O.effective as dateTime))) }
 
-                        define "Criterion 4":
+                        define Criterion:
                           exists (from [Observation: Code '718-7' from loinc] O
                             where ToDate(O.effective as dateTime) in Interval[Max(AnchorDate_anchor) + 0 hours, Min(AnchorDate_anchor) + 24 hours])
 
                         define InInitialPopulation:
-                          "Criterion 1" and
-                          ("Criterion 2" or
-                          "Criterion 3") and
-                          Min(AnchorDate_anchor) is not null and
-                          Max(AnchorDate_anchor) is not null and
-                          "Criterion 4"
+                          AnchorDate_anchor[0] is not null and
+                          AnchorDate_anchor[1] is not null and
+                          Criterion
                         """);
             }
         }

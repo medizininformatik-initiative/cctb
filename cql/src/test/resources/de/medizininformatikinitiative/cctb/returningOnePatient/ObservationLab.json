@@ -1,27 +1,29 @@
 {
   "version": "http://to_be_decided.com/draft-1/schema#",
   "inclusionCriteria": [
-    {
-      "criteria": [
-        [
-          {
-            "context": {
-              "code": "Laboruntersuchung",
-              "display": "Laboruntersuchung",
-              "system": "fdpg.mii.cds",
-              "version": "1.0.0"
-            },
-            "termCodes": [
-              {
-                "code": "800-3",
-                "display": "",
-                "system": "http://loinc.org"
-              }
-            ],
-            "attributeFilters": []
-          }
+    [
+      {
+        "criteria": [
+          [
+            {
+              "context": {
+                "code": "Laboruntersuchung",
+                "display": "Laboruntersuchung",
+                "system": "fdpg.mii.cds",
+                "version": "1.0.0"
+              },
+              "termCodes": [
+                {
+                  "code": "800-3",
+                  "display": "",
+                  "system": "http://loinc.org"
+                }
+              ],
+              "attributeFilters": []
+            }
+          ]
         ]
-      ]
-    }
+      }
+    ]
   ]
 }
