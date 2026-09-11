@@ -44,7 +44,7 @@ public class KdsTestDataTest {
     private static final Logger logger = LoggerFactory.getLogger(KdsTestDataTest.class);
 
     private final GenericContainer<?> blaze = new GenericContainer<>(
-            DockerImageName.parse("samply/blaze:1.4.1"))
+            DockerImageName.parse("samply/blaze:1.11.0"))
             .withImagePullPolicy(PullPolicy.alwaysPull())
             .withEnv("LOG_LEVEL", "debug")
             .withExposedPorts(8080)

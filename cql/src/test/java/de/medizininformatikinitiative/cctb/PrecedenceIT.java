@@ -28,7 +28,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 public class PrecedenceIT {
 
     @Container
-    private final GenericContainer<?> blaze = new GenericContainer<>(DockerImageName.parse("samply/blaze:0.34"))
+    private final GenericContainer<?> blaze = new GenericContainer<>(DockerImageName.parse("samply/blaze:1.11.0"))
             .withImagePullPolicy(PullPolicy.alwaysPull())
             .withExposedPorts(8080)
             .waitingFor(Wait.forHttp("/health").forStatusCode(200))

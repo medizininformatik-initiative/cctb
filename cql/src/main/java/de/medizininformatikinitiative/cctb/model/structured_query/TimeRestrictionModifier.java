@@ -23,6 +23,21 @@ public record TimeRestrictionModifier(Mapping.TimeRestrictionMapping mapping, Lo
         return new TimeRestrictionModifier(mapping, afterDate, beforeDate);
     }
 
+    /**
+     * Interval membership is emitted as {@code X in Interval[...]}, the plain CQL membership operator.
+     * <p>
+     * Historical note worth keeping, because it cost a day to find: Blaze's compiler never implements
+     * {@code In} itself and depends on an ELM normalization pass to rewrite {@code In(a,b)} into
+     * {@code Contains(b,a)} first. Up to and including Blaze 0.34 that normalizer descended into query
+     * {@code where} clauses but had no case for aggregate expressions, so the {@code In} inside
+     * {@code Min}/{@code Max(from ... where <window> return ...)} - exactly the shape the anchor path produces
+     * for a chained anchor (see {@code AbstractCriterion.dateValuesExpr} and {@code Group.resolveAnchorDates})
+     * - was never rewritten, and Blaze rejected the whole library with "Unsupported In expression. Please
+     * normalize the ELM tree before compiling." Later Blaze adds {@code normalize-aggregate}, which updates the
+     * aggregate's {@code :source}, and the shape compiles. The integration tests therefore pin a Blaze new
+     * enough to contain that fix; see {@code IntervalMembershipIT}, which asserts it directly, and will fail
+     * loudly if the pinned image is ever moved back below it.
+     */
     private static DefaultExpression dateExpr(InvocationExpression invocationExpr, IntervalSelector intervalSelector) {
         var castExp = TypeExpression.of(invocationExpr, "date");
         var toDateFunction = FunctionInvocation.of("ToDate", List.of(castExp));
