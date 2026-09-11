@@ -105,6 +105,16 @@ public record StructuredQuery(List<List<Group>> inclusionCriteria, List<List<Gro
                         "Group `%s` is used as an anchor and therefore requires `anchorOccurrence` to be set."
                                 .formatted(anchorId));
             }
+            // Multi-clause `any` is specified (the witness is a tuple, one candidate per clause, quantified over
+            // the product of the clauses' candidate sets, with the window taken from the tuple's extremes) but
+            // not implemented. Rejected here rather than mistranslated: without this, the clauses would silently
+            // collapse as if the anchor were single-clause.
+            if (anchor.anchorOccurrence() == Group.AnchorOccurrence.ANY && anchor.criteria().size() > 1) {
+                throw new IllegalArgumentException(
+                        ("Group `%s` uses `anchorOccurrence: \"any\"` with %d AND'd clauses. Multi-clause `any` "
+                                + "anchors are not supported yet; use a single-clause anchor, or `first`/`last`.")
+                                .formatted(anchorId, anchor.criteria().size()));
+            }
         }
 
         for (var group : allGroups) {
@@ -112,6 +122,57 @@ public record StructuredQuery(List<List<Group>> inclusionCriteria, List<List<Gro
                 detectCycle(group.id(), groupsById, new LinkedHashSet<>());
             }
         }
+
+        // A `first`/`last` anchor hoists to one per-patient `AnchorDate_...` define. An `any` anchor has no
+        // per-patient date at all - its witness is a query alias bound by an enclosing `exists` - so a
+        // `first`/`last` anchor chained off one would have to compute its define from a value that only exists
+        // inside that query, which a define cannot reference. Rejected rather than mistranslated. The dependent
+        // of an `any` anchor may be anything that is not itself used as a `first`/`last` anchor, which covers
+        // every chain shape the draft's worked examples use.
+        for (var anchorId : referencedAsAnchor) {
+            var anchor = groupsById.get(anchorId);
+            if (anchor.anchorOccurrence() == Group.AnchorOccurrence.ANY) {
+                continue;
+            }
+            var anyDependency = findAnyDependency(anchorId, groupsById, new LinkedHashSet<>());
+            if (anyDependency != null) {
+                throw new IllegalArgumentException(
+                        ("Group `%s` is used as a `%s` anchor but is itself anchored, via `%s`, to `%s` which "
+                                + "uses `anchorOccurrence: \"any\"`. An `any` anchor has no single resolved date "
+                                + "to measure from, so it cannot sit upstream of a `first`/`last` anchor.")
+                                .formatted(anchorId,
+                                        anchor.anchorOccurrence() == Group.AnchorOccurrence.LAST ? "last" : "first",
+                                        anyDependency.getKey(), anyDependency.getValue()));
+            }
+        }
+    }
+
+    /**
+     * Walks {@code groupId}'s own {@code anchorRef} edges looking for an {@code "any"} anchor upstream of it,
+     * returning the (referencing group, {@code "any"} anchor) pair that first reaches one, or {@code null}.
+     */
+    private static Map.Entry<String, String> findAnyDependency(String groupId, Map<String, Group> groupsById,
+                                                               LinkedHashSet<String> seen) {
+        if (!seen.add(groupId)) {
+            return null;
+        }
+        var group = groupsById.get(groupId);
+        var relativeTimeRestrictions = group == null ? null : group.relativeTimeRestrictions();
+        if (relativeTimeRestrictions == null) {
+            return null;
+        }
+        for (var relativeTimeRestriction : relativeTimeRestrictions) {
+            var anchorRef = relativeTimeRestriction.anchorRef();
+            var anchor = groupsById.get(anchorRef);
+            if (anchor != null && anchor.anchorOccurrence() == Group.AnchorOccurrence.ANY) {
+                return Map.entry(groupId, anchorRef);
+            }
+            var deeper = findAnyDependency(anchorRef, groupsById, seen);
+            if (deeper != null) {
+                return deeper;
+            }
+        }
+        return null;
     }
 
     private static void detectCycle(String groupId, Map<String, Group> groupsById, LinkedHashSet<String> path) {

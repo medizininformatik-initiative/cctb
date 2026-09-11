@@ -211,6 +211,22 @@ public interface Criterion {
      * CodeSystemDefinitions}
      */
     default Container<DefaultExpression> toCql(MappingContext mappingContext, IntervalSelector relativeWindow) {
+        return toCql(mappingContext, relativeWindow, false);
+    }
+
+    /**
+     * As {@link #toCql(MappingContext, IntervalSelector)}, but keeping the expression inline instead of moving it
+     * into its own {@code Criterion} definition when {@code inline} is set.
+     * <p>
+     * Required when {@code relativeWindow} is measured from the witness alias of an enclosing
+     * {@code anchorOccurrence: "any"} anchor (see {@code Translator}'s any-anchor handling): that alias is bound
+     * by the {@code exists} query it belongs to, so an expression referencing it is only valid inside that query.
+     * Hoisting it to a patient-context {@code define} would put an unbound identifier in that definition, which
+     * the engine rejects. Criteria whose window carries no alias are unaffected and keep being hoisted, which is
+     * what keeps the common output readable.
+     */
+    default Container<DefaultExpression> toCql(MappingContext mappingContext, IntervalSelector relativeWindow,
+                                               boolean inline) {
         return toCql(mappingContext);
     }
 

@@ -107,9 +107,16 @@ public final class Container<T extends Expression<T>> {
                         aIncrements.put(k, 1);
                         bIncrements.put(k, bSuffixes.get(k) == 0 ? 2 : 1);
                     });
+            // getOrDefault, not get: a prefix carrying a non-zero suffix in A need not appear in B at all, and
+            // unboxing the resulting null threw. Reachable once two containers being combined can differ in
+            // which named definitions they carry - e.g. when some criteria are kept inline inside an `any`
+            // anchor's correlated exists while their siblings are hoisted into `Criterion` definitions. A prefix
+            // absent from B has nothing there to shift, so the increment it gets is immaterial; treating it as
+            // zero keeps this consistent with the "present but unsuffixed" case on the line above.
             aSuffixes.entrySet().stream()
                     .filter(e -> e.getValue() > 0)
-                    .forEach(e -> bIncrements.put(e.getKey(), e.getValue() + (bSuffixes.get(e.getKey()) == 0 ? 1 : 0)));
+                    .forEach(e -> bIncrements.put(e.getKey(),
+                            e.getValue() + (bSuffixes.getOrDefault(e.getKey(), 0) == 0 ? 1 : 0)));
 
             return new Container<>(combiner.apply(a.expression.withIncrementedSuffixes(aIncrements),
                     b.expression.withIncrementedSuffixes(bIncrements)),

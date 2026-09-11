@@ -1702,10 +1702,11 @@ class TranslatorTest {
                 // from the optimization (see the design note on Translator.bundleExpr) - so its own window-filtered
                 // existence check ("Criterion 1" here) still appears normally.
                 //
-                // Note the guard only appears once here, on Criterion 1 - not on "AnchorDate_anchor-now"'s own
-                // reference inside AnchorDate_group-diagnosis-since-now's candidate filtering via the chaining path
-                // in resolveAnchorDates. That path doesn't yet apply the guard (see the comment there); only the
-                // final criterion-matching path in combineCriteria does. Known, scoped-out gap for chained anchors.
+                // Note the guards accumulate down the chain: "Criterion 2" carries BOTH "AnchorDate_anchor-now"
+                // and "AnchorDate_group-diagnosis-since-now", because resolveAnchorDates AND's the upstream
+                // window's guard into the chained anchor's own. Without that, an unresolved "anchor-now" would
+                // leave "middle"'s candidate window unbounded rather than making it no-match, and "Criterion 2"
+                // could still match on a patient the chain should have excluded.
                 assertThat(library).printsTo("""
                         library Retrieve version '1.0.0'
                         using FHIR version '4.0.0'
@@ -1735,6 +1736,7 @@ class TranslatorTest {
                         define InInitialPopulation:
                           "AnchorDate_anchor-now" is not null and
                           "Criterion 1" and
+                          "AnchorDate_anchor-now" is not null and
                           "AnchorDate_group-diagnosis-since-now" is not null and
                           "Criterion 2"
                         """);

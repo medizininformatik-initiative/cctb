@@ -97,11 +97,17 @@ abstract class AbstractCriterion<T extends AbstractCriterion<T>> implements Crit
 
     @Override
     public Container<DefaultExpression> toCql(MappingContext mappingContext, IntervalSelector relativeWindow) {
+        return toCql(mappingContext, relativeWindow, false);
+    }
+
+    @Override
+    public Container<DefaultExpression> toCql(MappingContext mappingContext, IntervalSelector relativeWindow,
+                                              boolean inline) {
         var expr = fullExpr(mappingContext, relativeWindow);
         if (expr.isEmpty()) {
             throw new TranslationException("Failed to expand the concept %s.".formatted(concept));
         }
-        return expr.moveToPatientContext("Criterion");
+        return inline ? expr : expr.moveToPatientContext("Criterion");
     }
 
     @Override

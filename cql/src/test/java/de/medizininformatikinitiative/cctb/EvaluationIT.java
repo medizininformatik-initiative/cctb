@@ -63,7 +63,7 @@ public class EvaluationIT {
     static final Map<String, String> CODE_SYSTEM_ALIASES = Map.of("http://loinc.org", "loinc");
 
     @Container
-    private final GenericContainer<?> blaze = new GenericContainer<>(DockerImageName.parse("samply/blaze:0.34"))
+    private final GenericContainer<?> blaze = new GenericContainer<>(DockerImageName.parse("samply/blaze:1.11.0"))
             .withImagePullPolicy(PullPolicy.alwaysPull())
             .withExposedPorts(8080)
             .waitingFor(Wait.forHttp("/health").forStatusCode(200))
@@ -417,6 +417,159 @@ public class EvaluationIT {
     }
 
     /**
+     * Regression test for the chaining null-guard: proves that an unresolved anchor at the <em>head</em> of a
+     * chain makes everything below it no-match, not just its immediate dependent.
+     * <p>
+     * {@code Group.resolveAnchorDates} already applied a chained group's own window when gathering its
+     * candidates, so the middle group's candidate query was correctly window-filtered - but only while the
+     * upstream anchor resolved. It discarded {@code window.guard()}, so for a patient whose head anchor never
+     * resolves the interval degenerates to unbounded (Blaze does not propagate the null to no-match, see
+     * {@link #evaluateNullIntervalMembershipDirectly}) and the middle group still handed a date downstream.
+     * <p>
+     * Chain: {@code diagnosis} (head) -> {@code leukocytes-after-diagnosis} (middle, both a dependent and an
+     * anchor) -> a CRP dependent. Translated in isolation via {@link Group#toCql} so no top-level AND on the
+     * head anchor's own truth can mask the guard, exactly as {@link #evaluateDependentAloneWhenAnchorNeverResolves}
+     * does one link further up. Patient {@code no-diagnosis} has the leukocytes and the CRP but no diagnosis at
+     * all: before the fix they were counted, because only the middle anchor's own guard reached the dependent.
+     * Patient {@code full-chain} has all three and is the positive control. Only the latter must be counted.
+     */
+    @Test
+    public void evaluateChainedAnchorGuardPropagatesFromHeadOfChain() throws Exception {
+        var diagnosisMapping = Mapping.of(DEMENTIA_DIAGNOSIS, "Condition", null, List.of(), List.of(),
+                Mapping.TimeRestrictionMapping.of("onset", Mapping.TimeRestrictionMapping.Type.DATE_TIME));
+        var leukocytesMapping = Mapping.of(LEUKOCYTES, "Observation", null, List.of(), List.of(),
+                Mapping.TimeRestrictionMapping.of("effective", Mapping.TimeRestrictionMapping.Type.DATE_TIME));
+        var crpMapping = Mapping.of(CRP, "Observation", null, List.of(), List.of(),
+                Mapping.TimeRestrictionMapping.of("effective", Mapping.TimeRestrictionMapping.Type.DATE_TIME));
+        var mappings = Map.of(DEMENTIA_DIAGNOSIS, diagnosisMapping, LEUKOCYTES, leukocytesMapping, CRP, crpMapping);
+        var mappingContext = MappingContext.of(mappings, null, CODE_SYSTEM_ALIASES);
+
+        var headAnchor = Group.of("diagnosis", List.of(List.of(ConceptCriterion.of(ContextualConcept.of(DEMENTIA_DIAGNOSIS)))),
+                Group.AnchorOccurrence.FIRST);
+        var middle = Group.of("leukocytes-after-diagnosis",
+                List.of(List.of(ConceptCriterion.of(ContextualConcept.of(LEUKOCYTES)))),
+                RelativeTimeRestriction.of("diagnosis", Duration.ZERO, Duration.parse("P30D")),
+                Group.AnchorOccurrence.FIRST);
+        var dependent = Group.of(null, List.of(List.of(ConceptCriterion.of(ContextualConcept.of(CRP)))),
+                RelativeTimeRestriction.of("leukocytes-after-diagnosis", Duration.ZERO, Duration.parse("P3D")));
+        var allGroupsById = Map.of(headAnchor.id(), headAnchor, middle.id(), middle);
+
+        // Isolated, as in evaluateDependentAloneWhenAnchorNeverResolves: only the dependent's own window-filtered
+        // criteria, so nothing but the propagated guard can exclude a patient missing the head of the chain.
+        var cql = dependent.toCql(mappingContext, allGroupsById, true)
+                .moveToPatientContext("InInitialPopulation")
+                .print();
+
+        var bundle = new Bundle().setType(TRANSACTION);
+        addPut(bundle, "Patient", "no-diagnosis", patient("no-diagnosis"));
+        addPut(bundle, "Observation", "no-diagnosis-leukocytes",
+                observation("no-diagnosis-leukocytes", "no-diagnosis", LEUKOCYTES, "2024-01-10"));
+        addPut(bundle, "Observation", "no-diagnosis-crp",
+                observation("no-diagnosis-crp", "no-diagnosis", CRP, "2024-01-11"));
+        addPut(bundle, "Patient", "full-chain", patient("full-chain"));
+        addPut(bundle, "Condition", "full-chain-diagnosis",
+                condition("full-chain-diagnosis", "full-chain", DEMENTIA_DIAGNOSIS, "2024-01-01"));
+        addPut(bundle, "Observation", "full-chain-leukocytes",
+                observation("full-chain-leukocytes", "full-chain", LEUKOCYTES, "2024-01-10"));
+        addPut(bundle, "Observation", "full-chain-crp",
+                observation("full-chain-crp", "full-chain", CRP, "2024-01-11"));
+        fhirClient.transaction().withBundle(bundle).execute();
+
+        var libraryUri = "urn:uuid" + UUID.randomUUID();
+        var library = appendCql(parseResource(Library.class, slurp("Library.json")).setUrl(libraryUri), cql);
+        var measureUri = "urn:uuid" + UUID.randomUUID();
+        var measure = parseResource(Measure.class, slurp("Measure.json")).setUrl(measureUri).addLibrary(libraryUri);
+        fhirClient.transaction().withBundle(createBundle(library, measure)).execute();
+
+        var report = fhirClient.operation()
+                .onType(Measure.class)
+                .named("evaluate-measure")
+                .withSearchParameter(Parameters.class, "measure", new StringParam(measureUri))
+                .andSearchParameter("periodStart", new DateParam("1900"))
+                .andSearchParameter("periodEnd", new DateParam("2100"))
+                .useHttpGet()
+                .returnResourceType(MeasureReport.class)
+                .execute();
+
+        // Only "full-chain". "no-diagnosis" has both downstream events but no head anchor, and the propagated
+        // guard now excludes them - before the fix this assertion saw 2.
+        assertEquals(1, report.getGroupFirstRep().getPopulationFirstRep().getCount());
+    }
+
+    /**
+     * The point of {@code anchorOccurrence: "any"}: two dependents of the same anchor must be satisfied by the
+     * <em>same</em> anchor occurrence, not by two different ones.
+     * <p>
+     * Patient {@code split} has two dementia diagnoses. The first is followed by leukocytes inside its window but
+     * has no CRP anywhere near it; the second has a CRP but no leukocytes. Each dependent can therefore find
+     * <em>some</em> qualifying diagnosis, so the rejected per-reference-independent reading would count this
+     * patient. The shared-witness rule the draft settles on must not: no single diagnosis satisfies both.
+     * Patient {@code same-episode} has one diagnosis satisfying both and is the positive control.
+     */
+    @Test
+    public void evaluateAnyAnchorRequiresOneSharedWitness() throws Exception {
+        var diagnosisMapping = Mapping.of(DEMENTIA_DIAGNOSIS, "Condition", null, List.of(), List.of(),
+                Mapping.TimeRestrictionMapping.of("onset", Mapping.TimeRestrictionMapping.Type.DATE_TIME));
+        var leukocytesMapping = Mapping.of(LEUKOCYTES, "Observation", null, List.of(), List.of(),
+                Mapping.TimeRestrictionMapping.of("effective", Mapping.TimeRestrictionMapping.Type.DATE_TIME));
+        var crpMapping = Mapping.of(CRP, "Observation", null, List.of(), List.of(),
+                Mapping.TimeRestrictionMapping.of("effective", Mapping.TimeRestrictionMapping.Type.DATE_TIME));
+        var mappingContext = MappingContext.of(
+                Map.of(DEMENTIA_DIAGNOSIS, diagnosisMapping, LEUKOCYTES, leukocytesMapping, CRP, crpMapping),
+                null, CODE_SYSTEM_ALIASES);
+
+        var anchor = Group.of("diagnosis", List.of(List.of(ConceptCriterion.of(ContextualConcept.of(DEMENTIA_DIAGNOSIS)))),
+                Group.AnchorOccurrence.ANY);
+        var leukocytesAfter = Group.of(null, List.of(List.of(ConceptCriterion.of(ContextualConcept.of(LEUKOCYTES)))),
+                RelativeTimeRestriction.of("diagnosis", Duration.ZERO, Duration.parse("P3D")));
+        var crpAround = Group.of(null, List.of(List.of(ConceptCriterion.of(ContextualConcept.of(CRP)))),
+                RelativeTimeRestriction.of("diagnosis", Duration.parse("-P1D"), Duration.parse("P1D")));
+        var structuredQuery = StructuredQuery.of(List.of(List.of(anchor, leukocytesAfter, crpAround)));
+
+        var cql = Translator.of(mappingContext).toCql(structuredQuery).print();
+
+        var bundle = new Bundle().setType(TRANSACTION);
+        addPut(bundle, "Patient", "split", patient("split"));
+        addPut(bundle, "Condition", "split-diagnosis-a",
+                condition("split-diagnosis-a", "split", DEMENTIA_DIAGNOSIS, "2024-01-10"));
+        addPut(bundle, "Observation", "split-leukocytes",
+                observation("split-leukocytes", "split", LEUKOCYTES, "2024-01-11"));
+        addPut(bundle, "Condition", "split-diagnosis-b",
+                condition("split-diagnosis-b", "split", DEMENTIA_DIAGNOSIS, "2024-02-10"));
+        addPut(bundle, "Observation", "split-crp",
+                observation("split-crp", "split", CRP, "2024-02-10"));
+
+        addPut(bundle, "Patient", "same-episode", patient("same-episode"));
+        addPut(bundle, "Condition", "same-episode-diagnosis",
+                condition("same-episode-diagnosis", "same-episode", DEMENTIA_DIAGNOSIS, "2024-03-10"));
+        addPut(bundle, "Observation", "same-episode-leukocytes",
+                observation("same-episode-leukocytes", "same-episode", LEUKOCYTES, "2024-03-11"));
+        addPut(bundle, "Observation", "same-episode-crp",
+                observation("same-episode-crp", "same-episode", CRP, "2024-03-10"));
+        fhirClient.transaction().withBundle(bundle).execute();
+
+        var libraryUri = "urn:uuid" + UUID.randomUUID();
+        var library = appendCql(parseResource(Library.class, slurp("Library.json")).setUrl(libraryUri), cql);
+        var measureUri = "urn:uuid" + UUID.randomUUID();
+        var measure = parseResource(Measure.class, slurp("Measure.json")).setUrl(measureUri).addLibrary(libraryUri);
+        fhirClient.transaction().withBundle(createBundle(library, measure)).execute();
+
+        var report = fhirClient.operation()
+                .onType(Measure.class)
+                .named("evaluate-measure")
+                .withSearchParameter(Parameters.class, "measure", new StringParam(measureUri))
+                .andSearchParameter("periodStart", new DateParam("1900"))
+                .andSearchParameter("periodEnd", new DateParam("2100"))
+                .useHttpGet()
+                .returnResourceType(MeasureReport.class)
+                .execute();
+
+        // Only "same-episode". A count of 2 would mean the two dependents were allowed to pick different
+        // diagnoses, i.e. the independent-witness reading the draft rejects.
+        assertEquals(1, report.getGroupFirstRep().getPopulationFirstRep().getCount());
+    }
+
+    /**
      * Verification for a real bug suspected from a user-reported anchor whose mapping supports both {@code
      * dateTime} and {@code Period}: {@code dateProjectionExpr} (AbstractCriterion) built {@code
      * Coalesce(ToDate(x as dateTime), (x as Period).start)} - {@code ToDate} returns {@code Date}, but {@code
@@ -609,6 +762,86 @@ public class EvaluationIT {
                 .returnResourceType(MeasureReport.class)
                 .execute();
 
+        assertEquals(2, report.getGroupFirstRep().getPopulationFirstRep().getCount());
+    }
+
+    /**
+     * Tests a claim stronger than {@link #evaluateSameAnchorSharedAsymmetricallyAcrossBundles}: that an anchor's
+     * own criteria don't need to be listed as a required member of *any* inclusion-side bundle at all - being
+     * referenced via {@code anchorRef} from a dependent whose own guard must hold is already sufficient, since the
+     * guard is provably at least as strong as the anchor's own {@code combineCriteria}. Here
+     * {@code anchor-diagnosis} is listed only in a throwaway exclusion-side bundle (paired with a criterion no
+     * test patient ever satisfies, so that bundle never actually excludes anyone - it exists purely so the anchor
+     * id resolves via {@code allGroupsById}), and is never a member of either inclusion bundle that references it.
+     * If a patient without the diagnosis could still qualify via a dependent's own criteria alone, that would
+     * disprove the claim; the null-guard fix should still catch it regardless of the missing explicit listing.
+     */
+    @Test
+    public void evaluateAnchorRequirednessImplicitByReferenceAlone() throws Exception {
+        var diagnosisMapping = Mapping.of(DEMENTIA_DIAGNOSIS, "Condition", null, List.of(), List.of(),
+                Mapping.TimeRestrictionMapping.of("onset", Mapping.TimeRestrictionMapping.Type.DATE_TIME));
+        var leukocytesMapping = Mapping.of(LEUKOCYTES, "Observation", null, List.of(), List.of(),
+                Mapping.TimeRestrictionMapping.of("effective", Mapping.TimeRestrictionMapping.Type.DATE_TIME));
+        var crpMapping = Mapping.of(CRP, "Observation", null, List.of(), List.of(),
+                Mapping.TimeRestrictionMapping.of("effective", Mapping.TimeRestrictionMapping.Type.DATE_TIME));
+        var bloodPressureMapping = Mapping.of(BLOOD_PRESSURE, "Observation", null, List.of(), List.of());
+        var mappings = Map.of(DEMENTIA_DIAGNOSIS, diagnosisMapping, LEUKOCYTES, leukocytesMapping, CRP, crpMapping,
+                BLOOD_PRESSURE, bloodPressureMapping);
+        var mappingContext = MappingContext.of(mappings, null, CODE_SYSTEM_ALIASES);
+        var translator = Translator.of(mappingContext);
+
+        var anchorDiagnosis = Group.of("diagnosis", List.of(List.of(ConceptCriterion.of(ContextualConcept.of(DEMENTIA_DIAGNOSIS)))),
+                Group.AnchorOccurrence.FIRST);
+        var neverMatches = Group.of(null, List.of(List.of(ConceptCriterion.of(ContextualConcept.of(BLOOD_PRESSURE)))));
+        var dependentLeukocytes = Group.of(null, List.of(List.of(ConceptCriterion.of(ContextualConcept.of(LEUKOCYTES)))),
+                RelativeTimeRestriction.of("diagnosis", Duration.ZERO, Duration.ofDays(30)));
+        var dependentCrp = Group.of(null, List.of(List.of(ConceptCriterion.of(ContextualConcept.of(CRP)))),
+                RelativeTimeRestriction.of("diagnosis", Duration.ofHours(-72), Duration.ZERO));
+        // "diagnosis" is a member only of the exclusion-side bundle below, never of either inclusion bundle that
+        // references it - the whole point being tested.
+        var structuredQuery = StructuredQuery.of(
+                List.of(
+                        List.of(dependentLeukocytes),
+                        List.of(dependentCrp)),
+                List.of(
+                        List.of(anchorDiagnosis, neverMatches)));
+        var cql = translator.toCql(structuredQuery).print();
+
+        var bundle = new Bundle().setType(TRANSACTION);
+        addPut(bundle, "Patient", "diagnosis-and-leukocytes", patient("diagnosis-and-leukocytes"));
+        addPut(bundle, "Condition", "diagnosis-and-leukocytes-diagnosis",
+                condition("diagnosis-and-leukocytes-diagnosis", "diagnosis-and-leukocytes", DEMENTIA_DIAGNOSIS, "2024-01-10"));
+        addPut(bundle, "Observation", "diagnosis-and-leukocytes-leukocytes",
+                observation("diagnosis-and-leukocytes-leukocytes", "diagnosis-and-leukocytes", LEUKOCYTES, "2024-01-15"));
+        addPut(bundle, "Patient", "diagnosis-and-crp-no-leukocytes", patient("diagnosis-and-crp-no-leukocytes"));
+        addPut(bundle, "Condition", "diagnosis-and-crp-no-leukocytes-diagnosis",
+                condition("diagnosis-and-crp-no-leukocytes-diagnosis", "diagnosis-and-crp-no-leukocytes", DEMENTIA_DIAGNOSIS, "2024-01-10"));
+        addPut(bundle, "Observation", "diagnosis-and-crp-no-leukocytes-crp",
+                observation("diagnosis-and-crp-no-leukocytes-crp", "diagnosis-and-crp-no-leukocytes", CRP, "2024-01-08"));
+        addPut(bundle, "Patient", "no-diagnosis-with-crp", patient("no-diagnosis-with-crp"));
+        addPut(bundle, "Observation", "no-diagnosis-with-crp-crp",
+                observation("no-diagnosis-with-crp-crp", "no-diagnosis-with-crp", CRP, "2024-01-08"));
+        fhirClient.transaction().withBundle(bundle).execute();
+
+        var libraryUri = "urn:uuid" + UUID.randomUUID();
+        var library = appendCql(parseResource(Library.class, slurp("Library.json")).setUrl(libraryUri), cql);
+        var measureUri = "urn:uuid" + UUID.randomUUID();
+        var measure = parseResource(Measure.class, slurp("Measure.json")).setUrl(measureUri).addLibrary(libraryUri);
+        fhirClient.transaction().withBundle(createBundle(library, measure)).execute();
+
+        var report = fhirClient.operation()
+                .onType(Measure.class)
+                .named("evaluate-measure")
+                .withSearchParameter(Parameters.class, "measure", new StringParam(measureUri))
+                .andSearchParameter("periodStart", new DateParam("1900"))
+                .andSearchParameter("periodEnd", new DateParam("2100"))
+                .useHttpGet()
+                .returnResourceType(MeasureReport.class)
+                .execute();
+
+        // Same expected count as evaluateSameAnchorSharedAsymmetricallyAcrossBundles (2, excluding
+        // no-diagnosis-with-crp) - proving the outcome is identical whether or not the anchor is explicitly
+        // listed anywhere on the inclusion side.
         assertEquals(2, report.getGroupFirstRep().getPopulationFirstRep().getCount());
     }
 

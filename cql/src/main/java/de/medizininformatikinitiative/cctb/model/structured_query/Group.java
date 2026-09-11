@@ -140,13 +140,71 @@ public record Group(String id, List<List<Criterion>> criteria, List<RelativeTime
      */
     public Container<DefaultExpression> toCql(MappingContext mappingContext, Map<String, Group> allGroupsById,
                                               boolean isInclusionSide) {
+        return toCql(mappingContext, allGroupsById, isInclusionSide, Map.of());
+    }
+
+    /**
+     * As {@link #toCql(MappingContext, Map, boolean)}, with the witness aliases of any enclosing
+     * {@code anchorOccurrence: "any"} anchors in scope.
+     * <p>
+     * An {@code "any"} anchor resolves to no per-patient date at all, so a dependent of one cannot build its
+     * window from a hoisted {@code AnchorDate_...} identifier the way a {@code "first"}/{@code "last"} dependent
+     * does. Instead {@link Translator} emits a correlated {@code exists} over that anchor's candidate dates and
+     * passes the query alias down here, keyed by anchor id; {@link #computeEntryWindow} then builds the entry's
+     * interval from the alias directly. A group whose every entry names a {@code "first"}/{@code "last"} anchor
+     * is unaffected and takes exactly the path it always did.
+     */
+    public Container<DefaultExpression> toCql(MappingContext mappingContext, Map<String, Group> allGroupsById,
+                                              boolean isInclusionSide,
+                                              Map<String, IdentifierExpression> anyWitnessAliases) {
         if (relativeTimeRestrictions == null) {
             return combineCriteria(mappingContext, isInclusionSide, null, null);
         }
-        var window = computeWindow(mappingContext, allGroupsById);
+        var window = computeWindow(mappingContext, allGroupsById, anyWitnessAliases);
+        // If any entry's window is measured from an enclosing `exists`' witness alias, this group's criteria have
+        // to stay inline inside that query rather than being hoisted into their own `Criterion` definitions,
+        // which could not see the alias.
+        var boundToWitness = relativeTimeRestrictions.stream()
+                .anyMatch(restriction -> anyWitnessAliases.containsKey(restriction.anchorRef()));
         return window.interval().flatMap(intervalExpr ->
-                combineCriteria(mappingContext, isInclusionSide, (IntervalSelector) intervalExpr, window.guard()));
+                combineCriteria(mappingContext, isInclusionSide, (IntervalSelector) intervalExpr, window.guard(),
+                        boundToWitness));
     }
+
+    /**
+     * This group's candidate dates as an {@code "any"} anchor: every date its (single) clause matches, with its
+     * own window already applied when it is itself chained off another anchor, and <em>without</em> the
+     * {@code Min}/{@code Max} collapse {@link #resolveClauseDate} applies for {@code "first"}/{@code "last"}.
+     * The witness is chosen from this list existentially by {@link Translator}.
+     * <p>
+     * Only the date matters downstream - a window is computed from it and nothing else about the witness
+     * resource is ever consulted - so the candidate set is a list of dates rather than of resources, which lets
+     * this reuse {@code dateValuesExpr} unchanged. Single-clause is guaranteed by {@link StructuredQuery}'s
+     * validation.
+     * <p>
+     * {@code guard} carries the same obligation {@link #resolveAnchorDates} propagates: when this group is
+     * chained off a {@code "first"}/{@code "last"} anchor that fails to resolve, its own window degenerates to
+     * unbounded rather than to no-match, so the upstream guard has to be AND'd around the enclosing
+     * {@code exists} - otherwise every date this group matches would become a candidate.
+     */
+    public AnyCandidates anyCandidateDates(MappingContext mappingContext, Map<String, Group> allGroupsById,
+                                           Map<String, IdentifierExpression> anyWitnessAliases) {
+        var point = anchorPoint == null ? AnchorPoint.START : anchorPoint;
+        var clause = criteria.get(0);
+        if (relativeTimeRestrictions == null) {
+            return new AnyCandidates(clause.stream()
+                    .map(criterion -> criterion.dateValuesExpr(mappingContext, point))
+                    .reduce(Container.empty(), Container.UNION), Container.empty());
+        }
+        var window = computeWindow(mappingContext, allGroupsById, anyWitnessAliases);
+        var dates = window.interval().flatMap(w -> clause.stream()
+                .map(criterion -> criterion.dateValuesExpr(mappingContext, point, (IntervalSelector) w))
+                .reduce(Container.empty(), Container.UNION));
+        return new AnyCandidates(dates, window.guard());
+    }
+
+    /** An {@code "any"} anchor's candidate dates plus the guard that must hold for them to be meaningful. */
+    public record AnyCandidates(Container<DefaultExpression> dates, Container<DefaultExpression> guard) {}
 
     /**
      * Combines this group's own criteria (level 3/4 AND/OR). When {@code window} is non-null, every leaf
@@ -155,13 +213,19 @@ public record Group(String id, List<List<Criterion>> criteria, List<RelativeTime
      */
     private Container<DefaultExpression> combineCriteria(MappingContext mappingContext, boolean isInclusionSide,
                                                           IntervalSelector window, Container<DefaultExpression> guard) {
+        return combineCriteria(mappingContext, isInclusionSide, window, guard, false);
+    }
+
+    private Container<DefaultExpression> combineCriteria(MappingContext mappingContext, boolean isInclusionSide,
+                                                          IntervalSelector window, Container<DefaultExpression> guard,
+                                                          boolean inline) {
         var level2Combiner = isInclusionSide ? Container.AND : Container.OR;
         var level3Combiner = isInclusionSide ? Container.OR : Container.AND;
         var combined = criteria.stream()
                 .map(clause -> clause.stream()
                         .map(criterion -> window == null
                                 ? criterion.toCql(mappingContext)
-                                : criterion.toCql(mappingContext, window))
+                                : criterion.toCql(mappingContext, window, inline))
                         .reduce(Container.empty(), level3Combiner))
                 .reduce(Container.empty(), level2Combiner);
         // AND the guard in once, after this group's own criteria are fully combined, rather than once per leaf
@@ -204,18 +268,25 @@ public record Group(String id, List<List<Criterion>> criteria, List<RelativeTime
      * resources are already window-filtered before aggregation - the {@code anchorRef} graph is validated
      * acyclic by {@link StructuredQuery}, so this recursion terminates.
      */
-    private AnchorDates resolveAnchorDates(MappingContext mappingContext, Map<String, Group> allGroupsById) {
+    private AnchorDates resolveAnchorDates(MappingContext mappingContext, Map<String, Group> allGroupsById,
+                                           Map<String, IdentifierExpression> anyWitnessAliases) {
         if (relativeTimeRestrictions == null) {
             return aggregateClauseDates(mappingContext, null);
         }
-        // Known gap, not covered by this fix: chaining doesn't yet apply `window.guard()` to candidate
-        // filtering here - only the final criterion-matching path in combineCriteria does. If an upstream
-        // anchor doesn't resolve, this group's own clause-date resolution can still incorrectly include
-        // out-of-window candidates when it's itself an anchor for something further downstream.
-        var window = computeWindow(mappingContext, allGroupsById);
+        var window = computeWindow(mappingContext, allGroupsById, anyWitnessAliases);
         var earliest = window.interval().flatMap(w -> aggregateClauseDates(mappingContext, (IntervalSelector) w).earliest());
         var latest = window.interval().flatMap(w -> aggregateClauseDates(mappingContext, (IntervalSelector) w).latest());
-        var guard = window.interval().flatMap(w -> aggregateClauseDates(mappingContext, (IntervalSelector) w).guard());
+        var ownGuard = window.interval().flatMap(w -> aggregateClauseDates(mappingContext, (IntervalSelector) w).guard());
+        // The upstream guard has to travel with this anchor's own, not be dropped here. `window.interval()`
+        // filters this group's candidates correctly whenever the upstream anchor resolved, but when it did not,
+        // the interval degenerates to unbounded rather than to no-match (confirmed Blaze behaviour, see the
+        // Window design note) - so without this conjunction an unresolved anchor anywhere upstream would still
+        // let this group hand a date to whatever references it, and a downstream group could match a patient
+        // that should have been excluded. AND'ing the two guards makes an unresolved anchor anywhere along the
+        // chain force no-match at every point below it. Combining via `Container.AND` is the same pattern
+        // `intersect` already uses on multi-entry guards: both sides reference the same uniquely-named
+        // "AnchorDate_..." definitions, which Container's name-based merge collapses rather than renames apart.
+        var guard = Container.AND.apply(window.guard(), ownGuard);
         return new AnchorDates(earliest, latest, guard);
     }
 
@@ -327,9 +398,10 @@ public record Group(String id, List<List<Criterion>> criteria, List<RelativeTime
      * {@code Min}-of-ends interval and ANDs every entry's own guard - the single-shared-witness semantics for
      * the "between event A and event B" pattern (see this record's class-level doc).
      */
-    private Window computeWindow(MappingContext mappingContext, Map<String, Group> allGroupsById) {
+    private Window computeWindow(MappingContext mappingContext, Map<String, Group> allGroupsById,
+                                 Map<String, IdentifierExpression> anyWitnessAliases) {
         var entryWindows = relativeTimeRestrictions.stream()
-                .map(restriction -> computeEntryWindow(mappingContext, allGroupsById, restriction))
+                .map(restriction -> computeEntryWindow(mappingContext, allGroupsById, restriction, anyWitnessAliases))
                 .toList();
         return entryWindows.size() == 1 ? entryWindows.get(0) : intersect(entryWindows);
     }
@@ -348,9 +420,24 @@ public record Group(String id, List<List<Criterion>> criteria, List<RelativeTime
      * derived from {@code earliest}/{@code latest} being non-null.
      */
     private Window computeEntryWindow(MappingContext mappingContext, Map<String, Group> allGroupsById,
-                                      RelativeTimeRestriction restriction) {
+                                      RelativeTimeRestriction restriction,
+                                      Map<String, IdentifierExpression> anyWitnessAliases) {
+        var witnessAlias = anyWitnessAliases.get(restriction.anchorRef());
+        if (witnessAlias != null) {
+            // An "any" anchor has no resolved date, so both bounds are measured from the enclosing exists'
+            // witness alias. No guard: the existential is natively false on an empty candidate set, and section 7
+            // of the draft makes emitting a date-null guard here a MUST NOT - there is no date to guard.
+            var witnessExpr = new WrapperExpression(witnessAlias);
+            Expression<?> anyStart = restriction.minOffset() == null
+                    ? DateTimeExpression.of(TimeRestriction.MIN_AFTER_DATE)
+                    : AdditionExpressionTerm.of(witnessExpr, offsetQuantity(restriction.minOffset()));
+            Expression<?> anyEnd = restriction.maxOffset() == null
+                    ? DateTimeExpression.of(TimeRestriction.MAX_BEFORE_DATE)
+                    : AdditionExpressionTerm.of(witnessExpr, offsetQuantity(restriction.maxOffset()));
+            return new Window(Container.of(IntervalSelector.of(anyStart, anyEnd)), Container.empty());
+        }
         var anchor = allGroupsById.get(restriction.anchorRef());
-        var anchorDates = anchor.resolveAnchorDates(mappingContext, allGroupsById);
+        var anchorDates = anchor.resolveAnchorDates(mappingContext, allGroupsById, anyWitnessAliases);
         var interval = anchorDates.latest().flatMap(latestExpr -> anchorDates.earliest().map(earliestExpr -> {
             Expression<?> windowStart = restriction.minOffset() == null
                     ? DateTimeExpression.of(TimeRestriction.MIN_AFTER_DATE)
@@ -412,9 +499,17 @@ public record Group(String id, List<List<Criterion>> criteria, List<RelativeTime
         return QuantityExpression.ofCalendarDuration(BigDecimal.valueOf(offset.toHours()), "hours");
     }
 
+    /**
+     * How an anchor group's matching resources are narrowed to those eligible to serve as the witness for a
+     * dependent's window. {@code FIRST}/{@code LAST} narrow to a single occurrence and hoist it to one
+     * per-patient {@code AnchorDate_...} define; {@code ANY} leaves the candidate set whole, so the witness is
+     * chosen existentially and there is no date to hoist or to guard - see {@link Translator}'s any-anchor
+     * handling and the CCDL v3 draft, section 6.
+     */
     public enum AnchorOccurrence {
         @JsonProperty("first") FIRST,
-        @JsonProperty("last") LAST
+        @JsonProperty("last") LAST,
+        @JsonProperty("any") ANY
     }
 
     public enum AnchorPoint {
