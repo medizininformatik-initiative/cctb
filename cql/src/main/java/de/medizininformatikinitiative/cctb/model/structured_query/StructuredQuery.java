@@ -105,16 +105,6 @@ public record StructuredQuery(List<List<Group>> inclusionCriteria, List<List<Gro
                         "Group `%s` is used as an anchor and therefore requires `anchorOccurrence` to be set."
                                 .formatted(anchorId));
             }
-            // Multi-clause `any` is specified (the witness is a tuple, one candidate per clause, quantified over
-            // the product of the clauses' candidate sets, with the window taken from the tuple's extremes) but
-            // not implemented. Rejected here rather than mistranslated: without this, the clauses would silently
-            // collapse as if the anchor were single-clause.
-            if (anchor.anchorOccurrence() == Group.AnchorOccurrence.ANY && anchor.criteria().size() > 1) {
-                throw new IllegalArgumentException(
-                        ("Group `%s` uses `anchorOccurrence: \"any\"` with %d AND'd clauses. Multi-clause `any` "
-                                + "anchors are not supported yet; use a single-clause anchor, or `first`/`last`.")
-                                .formatted(anchorId, anchor.criteria().size()));
-            }
         }
 
         for (var group : allGroups) {

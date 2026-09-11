@@ -570,6 +570,174 @@ public class EvaluationIT {
     }
 
     /**
+     * A multi-clause {@code anchorOccurrence: "any"} anchor: the witness is a <em>tuple</em>, one candidate per
+     * AND'd clause, quantified over the product of the clauses' candidate sets, with a dependent's window taken
+     * from the tuple's extremes - {@code minOffset} from the latest member, {@code maxOffset} from the earliest.
+     * <p>
+     * Three patients, all of which satisfy both clauses and have a CRP:
+     * <ul>
+     * <li>{@code far-apart} - its one diagnosis and one leukocyte value are two months apart, so the only
+     * available tuple induces the inverted window {@code [latest, earliest + 3 days]}, which no date can fall
+     * in. Excluded, even though each clause matches and a CRP sits right beside one of them. This is what
+     * distinguishes the tuple rule from picking any single clause.</li>
+     * <li>{@code close} - one tuple, dates a day apart, CRP inside the resulting window. Included.</li>
+     * <li>{@code two-options} - <em>two</em> diagnoses. Paired with the leukocyte value one gives an inverted
+     * window and the other a satisfiable one, and only the second has the CRP inside it. Included, which is
+     * what proves the quantification really ranges over the product rather than over one fixed combination.</li>
+     * </ul>
+     */
+    @Test
+    public void evaluateMultiClauseAnyAnchorQuantifiesOverClauseProduct() throws Exception {
+        var diagnosisMapping = Mapping.of(DEMENTIA_DIAGNOSIS, "Condition", null, List.of(), List.of(),
+                Mapping.TimeRestrictionMapping.of("onset", Mapping.TimeRestrictionMapping.Type.DATE_TIME));
+        var leukocytesMapping = Mapping.of(LEUKOCYTES, "Observation", null, List.of(), List.of(),
+                Mapping.TimeRestrictionMapping.of("effective", Mapping.TimeRestrictionMapping.Type.DATE_TIME));
+        var crpMapping = Mapping.of(CRP, "Observation", null, List.of(), List.of(),
+                Mapping.TimeRestrictionMapping.of("effective", Mapping.TimeRestrictionMapping.Type.DATE_TIME));
+        var mappingContext = MappingContext.of(
+                Map.of(DEMENTIA_DIAGNOSIS, diagnosisMapping, LEUKOCYTES, leukocytesMapping, CRP, crpMapping),
+                null, CODE_SYSTEM_ALIASES);
+
+        var anchor = Group.of("severe", List.of(
+                List.of(ConceptCriterion.of(ContextualConcept.of(DEMENTIA_DIAGNOSIS))),
+                List.of(ConceptCriterion.of(ContextualConcept.of(LEUKOCYTES)))),
+                Group.AnchorOccurrence.ANY);
+        var crpAfter = Group.of(null, List.of(List.of(ConceptCriterion.of(ContextualConcept.of(CRP)))),
+                RelativeTimeRestriction.of("severe", Duration.ZERO, Duration.parse("P3D")));
+        var structuredQuery = StructuredQuery.of(List.of(List.of(anchor, crpAfter)));
+
+        var cql = Translator.of(mappingContext).toCql(structuredQuery).print();
+
+        var bundle = new Bundle().setType(TRANSACTION);
+        addPut(bundle, "Patient", "far-apart", patient("far-apart"));
+        addPut(bundle, "Condition", "far-apart-diagnosis",
+                condition("far-apart-diagnosis", "far-apart", DEMENTIA_DIAGNOSIS, "2024-01-10"));
+        addPut(bundle, "Observation", "far-apart-leukocytes",
+                observation("far-apart-leukocytes", "far-apart", LEUKOCYTES, "2024-03-10"));
+        addPut(bundle, "Observation", "far-apart-crp",
+                observation("far-apart-crp", "far-apart", CRP, "2024-03-11"));
+
+        addPut(bundle, "Patient", "close", patient("close"));
+        addPut(bundle, "Condition", "close-diagnosis",
+                condition("close-diagnosis", "close", DEMENTIA_DIAGNOSIS, "2024-02-10"));
+        addPut(bundle, "Observation", "close-leukocytes",
+                observation("close-leukocytes", "close", LEUKOCYTES, "2024-02-11"));
+        addPut(bundle, "Observation", "close-crp",
+                observation("close-crp", "close", CRP, "2024-02-12"));
+
+        addPut(bundle, "Patient", "two-options", patient("two-options"));
+        addPut(bundle, "Condition", "two-options-diagnosis-early",
+                condition("two-options-diagnosis-early", "two-options", DEMENTIA_DIAGNOSIS, "2024-05-01"));
+        addPut(bundle, "Condition", "two-options-diagnosis-late",
+                condition("two-options-diagnosis-late", "two-options", DEMENTIA_DIAGNOSIS, "2024-06-01"));
+        addPut(bundle, "Observation", "two-options-leukocytes",
+                observation("two-options-leukocytes", "two-options", LEUKOCYTES, "2024-06-02"));
+        addPut(bundle, "Observation", "two-options-crp",
+                observation("two-options-crp", "two-options", CRP, "2024-06-03"));
+        fhirClient.transaction().withBundle(bundle).execute();
+
+        var libraryUri = "urn:uuid" + UUID.randomUUID();
+        var library = appendCql(parseResource(Library.class, slurp("Library.json")).setUrl(libraryUri), cql);
+        var measureUri = "urn:uuid" + UUID.randomUUID();
+        var measure = parseResource(Measure.class, slurp("Measure.json")).setUrl(measureUri).addLibrary(libraryUri);
+        fhirClient.transaction().withBundle(createBundle(library, measure)).execute();
+
+        var report = fhirClient.operation()
+                .onType(Measure.class)
+                .named("evaluate-measure")
+                .withSearchParameter(Parameters.class, "measure", new StringParam(measureUri))
+                .andSearchParameter("periodStart", new DateParam("1900"))
+                .andSearchParameter("periodEnd", new DateParam("2100"))
+                .useHttpGet()
+                .returnResourceType(MeasureReport.class)
+                .execute();
+
+        // "close" and "two-options". A count of 3 would mean the clauses were not both constraining the window;
+        // a count of 1 would mean only one fixed combination was tried rather than the whole product.
+        assertEquals(2, report.getGroupFirstRep().getPopulationFirstRep().getCount());
+    }
+
+    /**
+     * An inverted window must make the group no-match, not fail the evaluation.
+     * <p>
+     * A group with two {@code relativeTimeRestrictions} entries takes its start from one anchor and its end from
+     * another, so a patient whose second anchor precedes the first produces {@code windowStart > windowEnd} -
+     * "between the diagnosis and the procedure" for someone whose procedure came first. No timestamp can satisfy
+     * that, so the group should simply not match.
+     * <p>
+     * Blaze does not do that on its own: constructing or testing against an {@code Interval} whose bounds are the
+     * wrong way round fails the whole measure with "Invalid interval bounds" rather than yielding false. Before
+     * {@code Group.withBoundsGuard} this test could not merely miscount - the evaluation errored outright, taking
+     * the well-ordered patient down with it. That is a bug in shipped behaviour, not something `any` introduced:
+     * multi-entry restrictions and multi-clause anchors (including {@code first}/{@code last}) have been able to
+     * invert since they landed, and no test had a patient whose data did it.
+     */
+    @Test
+    public void evaluateInvertedWindowIsNoMatchRatherThanAnError() throws Exception {
+        var procedure = ContextualTermCode.of(CONTEXT,
+                TermCode.of("http://fhir.de/CodeSystem/bfarm/ops", "5-812", "Arthroskopische Operation am Kniegelenk"));
+        var diagnosisMapping = Mapping.of(DEMENTIA_DIAGNOSIS, "Condition", null, List.of(), List.of(),
+                Mapping.TimeRestrictionMapping.of("onset", Mapping.TimeRestrictionMapping.Type.DATE_TIME));
+        var procedureMapping = Mapping.of(procedure, "Procedure", null, List.of(), List.of(),
+                Mapping.TimeRestrictionMapping.of("performed", DATE_TIME));
+        var crpMapping = Mapping.of(CRP, "Observation", null, List.of(), List.of(),
+                Mapping.TimeRestrictionMapping.of("effective", Mapping.TimeRestrictionMapping.Type.DATE_TIME));
+        var mappingContext = MappingContext.of(
+                Map.of(DEMENTIA_DIAGNOSIS, diagnosisMapping, procedure, procedureMapping, CRP, crpMapping),
+                null, CODE_SYSTEM_ALIASES);
+
+        var anchorDiagnosis = Group.of("diagnosis", List.of(List.of(ConceptCriterion.of(ContextualConcept.of(DEMENTIA_DIAGNOSIS)))),
+                Group.AnchorOccurrence.FIRST);
+        var anchorProcedure = Group.of("procedure", List.of(List.of(ConceptCriterion.of(ContextualConcept.of(procedure)))),
+                Group.AnchorOccurrence.FIRST);
+        var crpBetween = Group.of(null, List.of(List.of(ConceptCriterion.of(ContextualConcept.of(CRP)))),
+                List.of(RelativeTimeRestriction.of("diagnosis", Duration.ZERO, null),
+                        RelativeTimeRestriction.of("procedure", null, Duration.ZERO)));
+        var structuredQuery = StructuredQuery.of(List.of(List.of(anchorDiagnosis, anchorProcedure, crpBetween)));
+
+        var cql = Translator.of(mappingContext).toCql(structuredQuery).print();
+
+        var bundle = new Bundle().setType(TRANSACTION);
+        addPut(bundle, "Patient", "ordered", patient("ordered"));
+        addPut(bundle, "Condition", "ordered-diagnosis",
+                condition("ordered-diagnosis", "ordered", DEMENTIA_DIAGNOSIS, "2024-01-10"));
+        addPut(bundle, "Procedure", "ordered-procedure",
+                procedureWithDateTime("ordered-procedure", "ordered", procedure, "2024-02-10"));
+        addPut(bundle, "Observation", "ordered-crp",
+                observation("ordered-crp", "ordered", CRP, "2024-01-20"));
+
+        // Procedure BEFORE diagnosis, so the window is [2024-02-10, 2024-01-10] - inverted.
+        addPut(bundle, "Patient", "inverted", patient("inverted"));
+        addPut(bundle, "Condition", "inverted-diagnosis",
+                condition("inverted-diagnosis", "inverted", DEMENTIA_DIAGNOSIS, "2024-02-10"));
+        addPut(bundle, "Procedure", "inverted-procedure",
+                procedureWithDateTime("inverted-procedure", "inverted", procedure, "2024-01-10"));
+        addPut(bundle, "Observation", "inverted-crp",
+                observation("inverted-crp", "inverted", CRP, "2024-01-20"));
+        fhirClient.transaction().withBundle(bundle).execute();
+
+        var libraryUri = "urn:uuid" + UUID.randomUUID();
+        var library = appendCql(parseResource(Library.class, slurp("Library.json")).setUrl(libraryUri), cql);
+        var measureUri = "urn:uuid" + UUID.randomUUID();
+        var measure = parseResource(Measure.class, slurp("Measure.json")).setUrl(measureUri).addLibrary(libraryUri);
+        fhirClient.transaction().withBundle(createBundle(library, measure)).execute();
+
+        var report = fhirClient.operation()
+                .onType(Measure.class)
+                .named("evaluate-measure")
+                .withSearchParameter(Parameters.class, "measure", new StringParam(measureUri))
+                .andSearchParameter("periodStart", new DateParam("1900"))
+                .andSearchParameter("periodEnd", new DateParam("2100"))
+                .useHttpGet()
+                .returnResourceType(MeasureReport.class)
+                .execute();
+
+        // Only "ordered". Reaching this assertion at all is half the point: without the bounds guard the call
+        // above throws "Invalid interval bounds" and nobody is counted.
+        assertEquals(1, report.getGroupFirstRep().getPopulationFirstRep().getCount());
+    }
+
+    /**
      * Verification for a real bug suspected from a user-reported anchor whose mapping supports both {@code
      * dateTime} and {@code Period}: {@code dateProjectionExpr} (AbstractCriterion) built {@code
      * Coalesce(ToDate(x as dateTime), (x as Period).start)} - {@code ToDate} returns {@code Date}, but {@code

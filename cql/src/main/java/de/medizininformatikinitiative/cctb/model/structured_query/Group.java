@@ -156,7 +156,7 @@ public record Group(String id, List<List<Criterion>> criteria, List<RelativeTime
      */
     public Container<DefaultExpression> toCql(MappingContext mappingContext, Map<String, Group> allGroupsById,
                                               boolean isInclusionSide,
-                                              Map<String, IdentifierExpression> anyWitnessAliases) {
+                                              Map<String, List<IdentifierExpression>> anyWitnessAliases) {
         if (relativeTimeRestrictions == null) {
             return combineCriteria(mappingContext, isInclusionSide, null, null);
         }
@@ -188,23 +188,47 @@ public record Group(String id, List<List<Criterion>> criteria, List<RelativeTime
      * {@code exists} - otherwise every date this group matches would become a candidate.
      */
     public AnyCandidates anyCandidateDates(MappingContext mappingContext, Map<String, Group> allGroupsById,
-                                           Map<String, IdentifierExpression> anyWitnessAliases) {
+                                           Map<String, List<IdentifierExpression>> anyWitnessAliases) {
         var point = anchorPoint == null ? AnchorPoint.START : anchorPoint;
-        var clause = criteria.get(0);
         if (relativeTimeRestrictions == null) {
-            return new AnyCandidates(clause.stream()
-                    .map(criterion -> criterion.dateValuesExpr(mappingContext, point))
-                    .reduce(Container.empty(), Container.UNION), Container.empty());
+            return new AnyCandidates(criteria.stream()
+                    .map(clause -> clauseCandidateDates(mappingContext, point, clause, null))
+                    .toList(), Container.empty());
         }
         var window = computeWindow(mappingContext, allGroupsById, anyWitnessAliases);
-        var dates = window.interval().flatMap(w -> clause.stream()
-                .map(criterion -> criterion.dateValuesExpr(mappingContext, point, (IntervalSelector) w))
-                .reduce(Container.empty(), Container.UNION));
-        return new AnyCandidates(dates, window.guard());
+        var perClause = criteria.stream()
+                .map(clause -> window.interval().flatMap(w ->
+                        clauseCandidateDates(mappingContext, point, clause, (IntervalSelector) w)))
+                .toList();
+        return new AnyCandidates(perClause, window.guard());
     }
 
-    /** An {@code "any"} anchor's candidate dates plus the guard that must hold for them to be meaningful. */
-    public record AnyCandidates(Container<DefaultExpression> dates, Container<DefaultExpression> guard) {}
+    /** Every date one AND'd clause matches, unioned across its criteria and their concept expansions. */
+    private Container<DefaultExpression> clauseCandidateDates(MappingContext mappingContext, AnchorPoint point,
+                                                              List<Criterion> clause, IntervalSelector window) {
+        return clause.stream()
+                .map(criterion -> window == null
+                        ? criterion.dateValuesExpr(mappingContext, point)
+                        : criterion.dateValuesExpr(mappingContext, point, window))
+                .reduce(Container.empty(), Container.UNION);
+    }
+
+    /**
+     * An {@code "any"} anchor's candidate dates, one entry per AND'd clause, plus the guard that must hold for
+     * them to be meaningful.
+     * <p>
+     * A single-clause anchor yields one list and one witness. A multi-clause anchor yields one list per clause and
+     * the witness is a <em>tuple</em>, one candidate drawn from each: every clause is required, so the anchor is
+     * only satisfied by a combination that has all of them. {@link Translator} quantifies over that tuple by
+     * nesting one {@code exists} per clause, and {@link #computeEntryWindow} measures a dependent's bounds from
+     * the tuple's extremes.
+     */
+    public record AnyCandidates(List<Container<DefaultExpression>> perClauseDates,
+                                Container<DefaultExpression> guard) {
+        public AnyCandidates {
+            perClauseDates = List.copyOf(perClauseDates);
+        }
+    }
 
     /**
      * Combines this group's own criteria (level 3/4 AND/OR). When {@code window} is non-null, every leaf
@@ -269,7 +293,7 @@ public record Group(String id, List<List<Criterion>> criteria, List<RelativeTime
      * acyclic by {@link StructuredQuery}, so this recursion terminates.
      */
     private AnchorDates resolveAnchorDates(MappingContext mappingContext, Map<String, Group> allGroupsById,
-                                           Map<String, IdentifierExpression> anyWitnessAliases) {
+                                           Map<String, List<IdentifierExpression>> anyWitnessAliases) {
         if (relativeTimeRestrictions == null) {
             return aggregateClauseDates(mappingContext, null);
         }
@@ -399,11 +423,53 @@ public record Group(String id, List<List<Criterion>> criteria, List<RelativeTime
      * the "between event A and event B" pattern (see this record's class-level doc).
      */
     private Window computeWindow(MappingContext mappingContext, Map<String, Group> allGroupsById,
-                                 Map<String, IdentifierExpression> anyWitnessAliases) {
+                                 Map<String, List<IdentifierExpression>> anyWitnessAliases) {
         var entryWindows = relativeTimeRestrictions.stream()
                 .map(restriction -> computeEntryWindow(mappingContext, allGroupsById, restriction, anyWitnessAliases))
                 .toList();
-        return entryWindows.size() == 1 ? entryWindows.get(0) : intersect(entryWindows);
+        var window = entryWindows.size() == 1 ? entryWindows.get(0) : intersect(entryWindows);
+        return canInvert(allGroupsById) ? withBoundsGuard(window) : window;
+    }
+
+    /**
+     * Whether this group's computed window can come out inverted ({@code windowStart > windowEnd}) for some
+     * patient, which happens whenever two independently-resolved dates bound opposite ends of it:
+     * <ul>
+     * <li>more than one {@code relativeTimeRestrictions} entry - the intersection's start comes from one anchor
+     * and its end from another, so anchors far enough apart invert it;</li>
+     * <li>a multi-clause anchor - {@code minOffset} is measured from its latest clause and {@code maxOffset} from
+     * its earliest (see {@link AnchorDates}), so clauses far enough apart invert it.</li>
+     * </ul>
+     * A single entry against a single-clause anchor cannot: both bounds are the same date plus a constant, so the
+     * window is inverted only if {@code minOffset > maxOffset}, which is an authoring error rather than a
+     * property of the data.
+     */
+    private boolean canInvert(Map<String, Group> allGroupsById) {
+        if (relativeTimeRestrictions.size() > 1) {
+            return true;
+        }
+        var anchor = allGroupsById.get(relativeTimeRestrictions.get(0).anchorRef());
+        return anchor != null && anchor.criteria().size() > 1;
+    }
+
+    /**
+     * Adds {@code windowStart <= windowEnd} to {@code window}'s guard.
+     * <p>
+     * An inverted window means "no timestamp can satisfy this", which ought to make the group no-match. Blaze
+     * does not do that: constructing or testing against an {@code Interval} whose bounds are the wrong way round
+     * fails the whole evaluation with "Invalid interval bounds" rather than yielding false, for membership and
+     * for {@code overlaps} alike (confirmed empirically - see {@code IntervalMembershipIT}). So the emptiness has
+     * to be made explicit. Placing it in the guard, which {@link #combineCriteria} ANDs in ahead of the window
+     * tests, means the membership test is never reached for a patient whose window inverted - {@code and}
+     * short-circuits, which was likewise confirmed against the engine rather than assumed.
+     */
+    private static Window withBoundsGuard(Window window) {
+        var boundsOk = window.interval().map(expr -> {
+            var interval = (IntervalSelector) expr;
+            return (DefaultExpression) ComparatorExpression.of(interval.intervalStart(),
+                    de.medizininformatikinitiative.cctb.model.common.Comparator.LESS_EQUAL, interval.intervalEnd());
+        });
+        return new Window(window.interval(), Container.AND.apply(window.guard(), boundsOk));
     }
 
     /**
@@ -421,19 +487,26 @@ public record Group(String id, List<List<Criterion>> criteria, List<RelativeTime
      */
     private Window computeEntryWindow(MappingContext mappingContext, Map<String, Group> allGroupsById,
                                       RelativeTimeRestriction restriction,
-                                      Map<String, IdentifierExpression> anyWitnessAliases) {
-        var witnessAlias = anyWitnessAliases.get(restriction.anchorRef());
-        if (witnessAlias != null) {
+                                      Map<String, List<IdentifierExpression>> anyWitnessAliases) {
+        var witnessAliases = anyWitnessAliases.get(restriction.anchorRef());
+        if (witnessAliases != null) {
             // An "any" anchor has no resolved date, so both bounds are measured from the enclosing exists'
             // witness alias. No guard: the existential is natively false on an empty candidate set, and section 7
             // of the draft makes emitting a date-null guard here a MUST NOT - there is no date to guard.
-            var witnessExpr = new WrapperExpression(witnessAlias);
+            // One witness per AND'd clause of the anchor. With a single clause both bounds are measured from
+            // that one alias. With several, the witness is a tuple and the bounds come from its extremes, the
+            // same asymmetric rule `first`/`last` multi-clause anchors use (see the AnchorDates design note):
+            // minOffset from the LATEST member, because the anchor is only satisfied once its last clause has
+            // occurred, and maxOffset from the EARLIEST, because being within maxOffset of the anchor means
+            // being within maxOffset of every clause and the earliest gives the binding ceiling.
+            var latest = witnessAliasExpr(witnessAliases, "Max");
+            var earliest = witnessAliasExpr(witnessAliases, "Min");
             Expression<?> anyStart = restriction.minOffset() == null
                     ? DateTimeExpression.of(TimeRestriction.MIN_AFTER_DATE)
-                    : AdditionExpressionTerm.of(witnessExpr, offsetQuantity(restriction.minOffset()));
+                    : AdditionExpressionTerm.of(latest, offsetQuantity(restriction.minOffset()));
             Expression<?> anyEnd = restriction.maxOffset() == null
                     ? DateTimeExpression.of(TimeRestriction.MAX_BEFORE_DATE)
-                    : AdditionExpressionTerm.of(witnessExpr, offsetQuantity(restriction.maxOffset()));
+                    : AdditionExpressionTerm.of(earliest, offsetQuantity(restriction.maxOffset()));
             return new Window(Container.of(IntervalSelector.of(anyStart, anyEnd)), Container.empty());
         }
         var anchor = allGroupsById.get(restriction.anchorRef());
@@ -488,6 +561,19 @@ public record Group(String id, List<List<Criterion>> criteria, List<RelativeTime
         var guard = entryWindows.stream().map(Window::guard).reduce(Container.empty(), Container.AND);
 
         return new Window(interval, guard);
+    }
+
+    /**
+     * One witness alias as-is, or the {@code aggregate} ({@code Min}/{@code Max}) over all of them when the
+     * anchor is multi-clause and the witness is therefore a tuple.
+     */
+    private static DefaultExpression witnessAliasExpr(List<IdentifierExpression> witnessAliases, String aggregate) {
+        if (witnessAliases.size() == 1) {
+            return new WrapperExpression(witnessAliases.get(0));
+        }
+        var list = new WrapperExpression(ListSelector.of(witnessAliases.stream()
+                .map(alias -> (DefaultExpression) new WrapperExpression(alias)).toList()));
+        return new WrapperExpression(FunctionInvocation.of(aggregate, List.of(list)));
     }
 
     /**

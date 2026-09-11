@@ -23,6 +23,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.stream.Collectors;
+import java.util.stream.IntStream;
 import java.util.stream.Stream;
 
 import static de.medizininformatikinitiative.cctb.model.cql.Container.AND;
@@ -173,13 +174,13 @@ public class Translator {
      */
     private Container<DefaultExpression> anyAwareExpr(List<Group> members, Map<String, Group> allGroupsById,
                                                        boolean isInclusionSide) {
-        return bindAnyAnchors(anyAnchorBindingOrder(members, allGroupsById), 0, members, allGroupsById, Map.of(),
-                isInclusionSide);
+        return bindAnyAnchors(anyAnchorBindingOrder(members, allGroupsById), 0, members, allGroupsById,
+                Map.of(), isInclusionSide);
     }
 
     private Container<DefaultExpression> bindAnyAnchors(List<String> bindingOrder, int index, List<Group> members,
                                                          Map<String, Group> allGroupsById,
-                                                         Map<String, IdentifierExpression> bound,
+                                                         Map<String, List<IdentifierExpression>> bound,
                                                          boolean isInclusionSide) {
         if (index == bindingOrder.size()) {
             return members.stream()
@@ -188,23 +189,41 @@ public class Translator {
         }
         var anchorId = bindingOrder.get(index);
         var anchor = allGroupsById.get(anchorId);
-        var alias = StandardIdentifierExpression.of("W" + (index + 1));
-
         var candidates = anchor.anyCandidateDates(mappingContext, allGroupsById, bound);
+        var clauseCount = candidates.perClauseDates().size();
+
+        // One alias per AND'd clause of the anchor: with a single clause the witness is one date, with several it
+        // is a tuple with one member drawn from each clause. Aliases are suffixed by the anchor's position in the
+        // binding order, which is unique, so nested anchors never collide.
+        var aliases = IntStream.range(0, clauseCount)
+                .mapToObj(clause -> StandardIdentifierExpression.of(clauseCount == 1
+                        ? "W" + (index + 1)
+                        : "W" + (index + 1) + "_" + (clause + 1)))
+                .toList();
+
         var innerBound = new HashMap<>(bound);
-        innerBound.put(anchorId, alias);
-        var inner = bindAnyAnchors(bindingOrder, index + 1, members, allGroupsById, Map.copyOf(innerBound),
+        innerBound.put(anchorId, aliases);
+        var body = bindAnyAnchors(bindingOrder, index + 1, members, allGroupsById, Map.copyOf(innerBound),
                 isInclusionSide);
 
-        var existsExpr = candidates.dates().flatMap(dates -> inner.map(innerExpr ->
-                (DefaultExpression) ExistsExpression.of(QueryExpression.of(
-                        SourceClause.of(AliasedQuerySource.of(ParenthesizedExpression.of(dates), alias)),
-                        WhereClause.of(innerExpr)))));
+        // Nest one exists per clause, innermost first, so every alias of the tuple is in scope where the
+        // dependents' windows are built. Blaze accepts only single-source queries - `from A W1, B W2` is
+        // rejected with "Unsupported number of 2 sources in query" - so the product has to be expressed by
+        // nesting rather than by a multi-source query.
+        for (var clause = clauseCount - 1; clause >= 0; clause--) {
+            var dates = candidates.perClauseDates().get(clause);
+            var alias = aliases.get(clause);
+            var inner = body;
+            body = dates.flatMap(datesExpr -> inner.map(innerExpr ->
+                    (DefaultExpression) ExistsExpression.of(QueryExpression.of(
+                            SourceClause.of(AliasedQuerySource.of(ParenthesizedExpression.of(datesExpr), alias)),
+                            WhereClause.of(innerExpr)))));
+        }
 
         // The anchor's own guard sits OUTSIDE its exists: it asserts that whatever this anchor is itself chained
         // off resolved, and if it did not, the candidate query's window is unbounded rather than empty (see
         // Group.AnyCandidates), so every date this anchor matches would wrongly become a witness.
-        return AND.apply(candidates.guard(), existsExpr);
+        return AND.apply(candidates.guard(), body);
     }
 
     /**

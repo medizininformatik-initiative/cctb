@@ -1869,6 +1869,7 @@ class TranslatorTest {
                         define InInitialPopulation:
                           AnchorDate_anchor[0] is not null and
                           AnchorDate_anchor[1] is not null and
+                          Max(AnchorDate_anchor) + 0 hours <= Min(AnchorDate_anchor) + 24 hours and
                           Criterion
                         """);
             }
