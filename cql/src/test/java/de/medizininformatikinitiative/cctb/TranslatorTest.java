@@ -1596,7 +1596,7 @@ class TranslatorTest {
                         context Patient
 
                         define "AnchorDate_anchor-now":
-                          Min({ Now() })
+                          Min({ ToDate(Now()) })
 
                         define Criterion:
                           exists (from [Observation: Code '1988-5' from loinc] O
@@ -1718,7 +1718,7 @@ class TranslatorTest {
                         context Patient
 
                         define "AnchorDate_anchor-now":
-                          Min({ Now() })
+                          Min({ ToDate(Now()) })
 
                         define "Criterion 1":
                           exists (from [Condition: Code 'F00' from icd10] C

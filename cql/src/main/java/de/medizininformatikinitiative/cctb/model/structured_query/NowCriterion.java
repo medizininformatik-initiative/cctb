@@ -54,9 +54,26 @@ public final class NowCriterion implements Criterion {
         return null;
     }
 
+    /**
+     * The evaluation timestamp, reduced to a date.
+     * <p>
+     * {@code ToDate} is not cosmetic here. Every other criterion projects its date through
+     * {@code ToDate(<path> as dateTime)} (see {@code AbstractCriterion.dateProjectionExpr}), so a criterion being
+     * window-filtered is always compared at day precision. Emitting a bare {@code Now()} made this one anchor
+     * produce full {@code DateTime} precision instead, and CQL compares a {@code Date} against {@code DateTime}
+     * bounds as <em>uncertain</em> rather than as a plain ordering - so the membership test returned null and
+     * every {@code now}-anchored group silently matched nobody, whatever the data. Confirmed against a real
+     * engine both ways round; see {@code WorkedExampleIT.hemoglobinLast24h}, which is the published quickstart
+     * example and selected zero patients before this.
+     * <p>
+     * The consequence for authors is that a {@code now}-relative window is only as fine-grained as the dates it
+     * is compared against, which are days. {@code -PT24H} therefore means "since yesterday's date", not "within
+     * the last 24 clock hours" - the same day-granularity every other anchor already has.
+     */
     @Override
     public Container<DefaultExpression> dateValuesExpr(MappingContext mappingContext, Group.AnchorPoint anchorPoint) {
-        var now = new WrapperExpression(FunctionInvocation.of("Now", List.of()));
+        var now = new WrapperExpression(FunctionInvocation.of("ToDate",
+                List.of(new WrapperExpression(FunctionInvocation.of("Now", List.of())))));
         return Container.of((DefaultExpression) new WrapperExpression(ListSelector.of(List.of(now))));
     }
 }
