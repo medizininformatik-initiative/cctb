@@ -94,6 +94,55 @@ public class WorkedExampleIT {
         return report.getGroupFirstRep().getPopulationFirstRep().getCount();
     }
 
+
+    /**
+     * Asserts that the example selects exactly {@code includedPatientIds}, and - when
+     * {@code -Dccdl.fixtureDir=<dir>} is set - writes the dataset out as a portable conformance fixture.
+     * <p>
+     * The fixture is generated from the data these tests already prove correct rather than written by hand, so
+     * the published kit starts from something that has actually been evaluated. Expected results are recorded as
+     * patient ids rather than a count: a count cannot show <em>which</em> patient matched, and two independent
+     * implementations have to agree on exactly that.
+     */
+    private void assertIncludes(String exampleFile, Bundle bundle, String... includedPatientIds) throws Exception {
+        var fixtureDir = System.getProperty("ccdl.fixtureDir");
+        if (fixtureDir != null) {
+            writeFixture(fixtureDir, exampleFile, bundle, includedPatientIds);
+        }
+        assertEquals(includedPatientIds.length, evaluate(exampleFile, bundle));
+    }
+
+    private void writeFixture(String dir, String exampleFile, Bundle bundle, String[] included) throws Exception {
+        var base = exampleFile.replace(".json", "");
+        var out = java.nio.file.Path.of(dir);
+        java.nio.file.Files.createDirectories(out);
+
+        var includedSet = java.util.Set.of(included);
+        var excluded = bundle.getEntry().stream()
+                .map(Bundle.BundleEntryComponent::getResource)
+                .filter(Patient.class::isInstance)
+                .map(Resource::getIdPart)
+                .filter(id -> !includedSet.contains(id))
+                .sorted().toList();
+
+        java.nio.file.Files.writeString(out.resolve(base + "-data.json"),
+                fhirContext.newJsonParser().setPrettyPrint(true).encodeResourceToString(bundle));
+
+        var expected = """
+                {
+                  "ccdl": "%s",
+                  "referenceDate": "%s",
+                  "includedPatients": [%s],
+                  "excludedPatients": [%s]
+                }
+                """.formatted(exampleFile, LocalDate.now(),
+                java.util.Arrays.stream(included).sorted().map("\"%s\""::formatted)
+                        .collect(java.util.stream.Collectors.joining(", ")),
+                excluded.stream().map("\"%s\""::formatted)
+                        .collect(java.util.stream.Collectors.joining(", ")));
+        java.nio.file.Files.writeString(out.resolve(base + "-expected.json"), expected);
+    }
+
     // ---------- test data builders ----------
 
     private static Bundle bundle() {
@@ -182,7 +231,7 @@ public class WorkedExampleIT {
         observation(b, "stale-hb", "stale", LOINC, "718-7", daysAgo(3));
         patient(b, "none");
 
-        assertEquals(1, evaluate("ccdl-example-hemoglobin-last-24h.json", b));
+        assertIncludes("ccdl-example-hemoglobin-last-24h.json", b, "recent");
     }
 
     /**
@@ -208,7 +257,7 @@ public class WorkedExampleIT {
         procedure(b, "inverted-op", "inverted", "5-455.3", "2024-01-10");
         observation(b, "inverted-hb", "inverted", LOINC, "718-7", "2024-01-20");
 
-        assertEquals(1, evaluate("ccdl-example-hemoglobin-between-two-anchors.json", b));
+        assertIncludes("ccdl-example-hemoglobin-between-two-anchors.json", b, "between");
     }
 
     /**
@@ -237,7 +286,7 @@ public class WorkedExampleIT {
         patient(b, "none", "male", "1955-01-01");
         observation(b, "none-crp", "none", LOINC, "1988-5", "2024-01-05");
 
-        assertEquals(3, evaluate("ccdl-example-or-scoped-anchors-draft.json", b));
+        assertIncludes("ccdl-example-or-scoped-anchors-draft.json", b, "gender-crp", "donepezil", "weight");
     }
 
     /**
@@ -271,7 +320,7 @@ public class WorkedExampleIT {
         observation(b, "no-procedure-hb", "no-procedure", LOINC, "718-7", "2024-04-01");
         condition(b, "no-procedure-dx", "no-procedure", ICD, "E10.9", "2024-04-01");
 
-        assertEquals(2, evaluate("ccdl-example-hemoglobin-after-procedure.json", b));
+        assertIncludes("ccdl-example-hemoglobin-after-procedure.json", b, "first-path", "second-path");
     }
 
     /**
@@ -302,7 +351,7 @@ public class WorkedExampleIT {
         medicationStatement(b, "no-delirium-halo", "no-delirium", "N05AD01", "2024-01-12");
         observation(b, "no-delirium-na", "no-delirium", LOINC, "2951-2", "2024-01-11");
 
-        assertEquals(1, evaluate("ccdl-example-any-chained-anchors-draft.json", b));
+        assertIncludes("ccdl-example-any-chained-anchors-draft.json", b, "same-episode");
     }
 
     /**
@@ -339,7 +388,7 @@ public class WorkedExampleIT {
         condition(b, "no-hemoglobin-aki", "no-hemoglobin", ICD, "N17.0", "2024-01-04");
         procedure(b, "no-hemoglobin-dialysis", "no-hemoglobin", "8-85a.0", "2024-01-11");
 
-        assertEquals(2, evaluate("ccdl-example-any-chain-three-hops-draft.json", b));
+        assertIncludes("ccdl-example-any-chain-three-hops-draft.json", b, "chain", "late-episode");
     }
 
     /**
@@ -376,7 +425,7 @@ public class WorkedExampleIT {
         condition(b, "no-crp-aki", "no-crp", ICD, "N17.0", "2024-01-02");
         observation(b, "no-crp-hb", "no-crp", LOINC, "718-7", "2024-01-03");
 
-        assertEquals(2, evaluate("ccdl-example-any-multi-clause-anchor-draft.json", b));
+        assertIncludes("ccdl-example-any-multi-clause-anchor-draft.json", b, "tight", "two-options");
     }
 
     /**
@@ -403,7 +452,7 @@ public class WorkedExampleIT {
         medicationStatement(b, "excluded-vka", "excluded", "B01AA04", "2024-01-11");
         condition(b, "excluded-organ", "excluded", ICD, "N18.8", "2023-06-01");
 
-        assertEquals(2, evaluate("ccdl-with-new-time-constraint-draft.json", b));
+        assertIncludes("ccdl-with-new-time-constraint-draft.json", b, "included", "anticoagulant-only");
     }
 
     /** Everything the first inclusion array of the all-features example asks for, for one patient. */
@@ -456,6 +505,6 @@ public class WorkedExampleIT {
         specimen(b, "specimen-path-sample", "specimen-path", "16213411000119100", "specimen-path-dx");
         observation(b, "specimen-path-hb", "specimen-path", LOINC, "718-7", "2024-06-01");
 
-        assertEquals(3, evaluate("ccdl-example-all-features-draft.json", b));
+        assertIncludes("ccdl-example-all-features-draft.json", b, "main-path", "partial-exclusion", "specimen-path");
     }
 }
