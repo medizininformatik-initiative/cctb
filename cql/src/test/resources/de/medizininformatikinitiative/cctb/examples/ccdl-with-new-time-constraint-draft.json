@@ -1,0 +1,314 @@
+{
+  "version": "3",
+  "display": "Example-CCDL-With-Relative-Time-Constraints (DRAFT)",
+  "inclusionCriteria": [
+    [
+      {
+        "id": "group-gender",
+        "criteria": [
+          [
+            {
+              "termCodes": [
+                {
+                  "code": "263495000",
+                  "display": "Geschlecht",
+                  "system": "http://snomed.info/sct",
+                  "version": ""
+                }
+              ],
+              "context": {
+                "code": "Patient",
+                "display": "Patient",
+                "system": "fdpg.mii.cds",
+                "version": "1.0.0"
+              },
+              "valueFilter": {
+                "selectedConcepts": [
+                  {
+                    "code": "female",
+                    "display": "Female",
+                    "system": "http://hl7.org/fhir/administrative-gender"
+                  },
+                  {
+                    "code": "male",
+                    "display": "Male",
+                    "system": "http://hl7.org/fhir/administrative-gender"
+                  }
+                ],
+                "type": "concept"
+              }
+            }
+          ]
+        ]
+      },
+      {
+        "id": "anchor-dementia-diagnosis",
+        "anchorOccurrence": "first",
+        "anchorPoint": "start",
+        "criteria": [
+          [
+            {
+              "context": {
+                "code": "Diagnose",
+                "display": "Diagnose",
+                "system": "fdpg.mii.cds",
+                "version": "1.0.0"
+              },
+              "termCodes": [
+                {
+                  "code": "F00",
+                  "display": "Demenz bei Alzheimer-Krankheit",
+                  "system": "http://fhir.de/CodeSystem/bfarm/icd-10-gm"
+                }
+              ]
+            },
+            {
+              "context": {
+                "code": "Diagnose",
+                "display": "Diagnose",
+                "system": "fdpg.mii.cds",
+                "version": "1.0.0"
+              },
+              "termCodes": [
+                {
+                  "code": "G30",
+                  "display": "Alzheimer-Krankheit",
+                  "system": "http://fhir.de/CodeSystem/bfarm/icd-10-gm"
+                }
+              ]
+            }
+          ]
+        ]
+      },
+      {
+        "id": "group-infection-signs-before-diagnosis",
+        "relativeTimeRestrictions": [
+          {
+            "anchorRef": "anchor-dementia-diagnosis",
+            "minOffset": "-P3D",
+            "maxOffset": "P0D"
+          }
+        ],
+        "criteria": [
+          [
+            {
+              "context": {
+                "code": "Laboruntersuchung",
+                "display": "Laboruntersuchung",
+                "system": "fdpg.mii.cds",
+                "version": "1.0.0"
+              },
+              "termCodes": [
+                {
+                  "code": "1988-5",
+                  "display": "C-reaktives Protein",
+                  "system": "http://loinc.org"
+                }
+              ]
+            },
+            {
+              "context": {
+                "code": "Laboruntersuchung",
+                "display": "Laboruntersuchung",
+                "system": "fdpg.mii.cds",
+                "version": "1.0.0"
+              },
+              "termCodes": [
+                {
+                  "code": "6690-2",
+                  "display": "Leukozyten",
+                  "system": "http://loinc.org"
+                }
+              ]
+            }
+          ],
+          [
+            {
+              "context": {
+                "code": "Vitaldaten",
+                "display": "Vitaldaten",
+                "system": "fdpg.mii.cds",
+                "version": "1.0.0"
+              },
+              "termCodes": [
+                {
+                  "code": "8867-4",
+                  "display": "Herzfrequenz",
+                  "system": "http://loinc.org"
+                }
+              ]
+            }
+          ]
+        ]
+      },
+      {
+        "id": "group-donepezil-after-diagnosis",
+        "relativeTimeRestrictions": [
+          {
+            "anchorRef": "anchor-dementia-diagnosis",
+            "minOffset": "P0D",
+            "maxOffset": "P30D"
+          }
+        ],
+        "criteria": [
+          [
+            {
+              "context": {
+                "code": "Medikamentenverordnung",
+                "display": "Verordnung von Medikamenten",
+                "system": "fdpg.mii.cds",
+                "version": "1.0.0"
+              },
+              "termCodes": [
+                {
+                  "code": "N06DA02",
+                  "display": "Donepezil",
+                  "system": "http://fhir.de/CodeSystem/bfarm/atc"
+                }
+              ]
+            }
+          ]
+        ]
+      },
+      {
+        "id": "group-weight-since-diagnosis-window",
+        "relativeTimeRestrictions": [
+          {
+            "anchorRef": "anchor-dementia-diagnosis",
+            "minOffset": "-P7D"
+          }
+        ],
+        "criteria": [
+          [
+            {
+              "context": {
+                "code": "Vitaldaten",
+                "display": "Vitaldaten",
+                "system": "fdpg.mii.cds",
+                "version": "1.0.0"
+              },
+              "termCodes": [
+                {
+                  "code": "29463-7",
+                  "display": "Körpergewicht",
+                  "system": "http://loinc.org"
+                }
+              ]
+            }
+          ]
+        ]
+      },
+      {
+        "id": "anchor-now",
+        "criteria": [
+          [
+            {
+              "type": "now"
+            }
+          ]
+        ]
+      },
+      {
+        "id": "group-respiratory-rate-since-now",
+        "relativeTimeRestrictions": [
+          {
+            "anchorRef": "anchor-now",
+            "minOffset": "-P7D",
+            "maxOffset": "P0D"
+          }
+        ],
+        "criteria": [
+          [
+            {
+              "context": {
+                "code": "Vitaldaten",
+                "display": "Vitaldaten",
+                "system": "fdpg.mii.cds",
+                "version": "1.0.0"
+              },
+              "termCodes": [
+                {
+                  "code": "9279-1",
+                  "display": "Atemfrequenz",
+                  "system": "http://loinc.org"
+                }
+              ]
+            }
+          ]
+        ]
+      }
+    ]
+  ],
+  "exclusionCriteria": [
+    [
+      {
+        "id": "group-excl-anticoagulant-after-diagnosis",
+        "relativeTimeRestrictions": [
+          {
+            "anchorRef": "anchor-dementia-diagnosis",
+            "minOffset": "P0D",
+            "maxOffset": "P2D"
+          }
+        ],
+        "criteria": [
+          [
+            {
+              "context": {
+                "code": "Medikamentenverordnung",
+                "display": "Verordnung von Medikamenten",
+                "system": "fdpg.mii.cds",
+                "version": "1.0.0"
+              },
+              "termCodes": [
+                {
+                  "code": "B01AA04",
+                  "display": "Phenprocoumon",
+                  "system": "http://fhir.de/CodeSystem/bfarm/atc"
+                }
+              ]
+            }
+          ]
+        ]
+      },
+      {
+        "id": "group-excl-organ-failure",
+        "criteria": [
+          [
+            {
+              "context": {
+                "code": "Diagnose",
+                "display": "Diagnose",
+                "system": "fdpg.mii.cds",
+                "version": "1.0.0"
+              },
+              "termCodes": [
+                {
+                  "code": "N18.8",
+                  "display": "Sonstige chronische Nierenkrankheit",
+                  "system": "http://fhir.de/CodeSystem/bfarm/icd-10-gm"
+                }
+              ]
+            }
+          ],
+          [
+            {
+              "context": {
+                "code": "Diagnose",
+                "display": "Diagnose",
+                "system": "fdpg.mii.cds",
+                "version": "1.0.0"
+              },
+              "termCodes": [
+                {
+                  "code": "K72",
+                  "display": "Leberversagen, anderenorts nicht klassifiziert",
+                  "system": "http://fhir.de/CodeSystem/bfarm/icd-10-gm"
+                }
+              ]
+            }
+          ]
+        ]
+      }
+    ]
+  ]
+}

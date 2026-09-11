@@ -1,0 +1,186 @@
+{
+  "version": "3",
+  "display": "Example-Hemoglobin-Within-24h-After-Procedure (DRAFT)",
+  "inclusionCriteria": [
+    [
+      {
+        "id": "group-gender",
+        "criteria": [
+          [
+            {
+              "termCodes": [
+                {
+                  "code": "263495000",
+                  "display": "Geschlecht",
+                  "system": "http://snomed.info/sct",
+                  "version": ""
+                }
+              ],
+              "context": {
+                "code": "Patient",
+                "display": "Patient",
+                "system": "fdpg.mii.cds",
+                "version": "1.0.0"
+              },
+              "valueFilter": {
+                "selectedConcepts": [
+                  {
+                    "code": "female",
+                    "display": "Female",
+                    "system": "http://hl7.org/fhir/administrative-gender"
+                  },
+                  {
+                    "code": "male",
+                    "display": "Male",
+                    "system": "http://hl7.org/fhir/administrative-gender"
+                  }
+                ],
+                "type": "concept"
+              }
+            }
+          ]
+        ]
+      },
+      {
+        "id": "anchor-procedure",
+        "anchorOccurrence": "first",
+        "criteria": [
+          [
+            {
+              "termCodes": [
+                {
+                  "code": "5-470.1",
+                  "display": "Appendektomie: Laparoskopisch",
+                  "system": "http://fhir.de/CodeSystem/bfarm/ops",
+                  "version": "2026"
+                }
+              ],
+              "context": {
+                "code": "Procedure",
+                "display": "Prozedur",
+                "system": "fdpg.mii.cds",
+                "version": "1.0.0"
+              }
+            }
+          ],
+          [
+            {
+              "termCodes": [
+                {
+                  "code": "8-718.94",
+                  "display": "Appendektomie",
+                  "system": "http://fhir.de/CodeSystem/bfarm/ops",
+                  "version": "2026"
+                }
+              ],
+              "context": {
+                "code": "Procedure",
+                "display": "Prozedur",
+                "system": "fdpg.mii.cds",
+                "version": "1.0.0"
+              }
+            }
+          ]
+        ]
+      },
+      {
+        "id": "group-hemoglobin-after-procedure",
+        "relativeTimeRestrictions": [
+          {
+            "anchorRef": "anchor-procedure",
+            "minOffset": "-PT24H",
+            "maxOffset": "PT24H"
+          }
+        ],
+        "criteria": [
+          [
+            {
+              "termCodes": [
+                {
+                  "code": "718-7",
+                  "display": "Hemoglobin [Mass/volume] in Blood",
+                  "system": "http://loinc.org",
+                  "version": "2.81"
+                }
+              ],
+              "context": {
+                "code": "Laboruntersuchung",
+                "display": "Laboruntersuchung",
+                "system": "fdpg.mii.cds",
+                "version": "1.0.0"
+              }
+            }
+          ],
+          [
+            {
+              "termCodes": [
+                {
+                  "code": "E10.9",
+                  "display": "Diabetes mellitus, Typ 1: Ohne Komplikationen",
+                  "system": "http://fhir.de/CodeSystem/bfarm/icd-10-gm",
+                  "version": "2026"
+                }
+              ],
+              "context": {
+                "code": "Diagnose",
+                "display": "Diagnose",
+                "system": "fdpg.mii.cds",
+                "version": "1.0.0"
+              }
+            }
+          ]
+        ]
+      }
+    ],
+    [
+      {
+        "id": "group-hemoglobin-after-procedure-2",
+        "relativeTimeRestrictions": [
+          {
+            "anchorRef": "anchor-procedure",
+            "minOffset": "-PT24H",
+            "maxOffset": "PT24H"
+          }
+        ],
+        "criteria": [
+          [
+            {
+              "termCodes": [
+                {
+                  "code": "718-7",
+                  "display": "Hemoglobin [Mass/volume] in Blood",
+                  "system": "http://loinc.org",
+                  "version": "2.81"
+                }
+              ],
+              "context": {
+                "code": "Laboruntersuchung",
+                "display": "Laboruntersuchung",
+                "system": "fdpg.mii.cds",
+                "version": "1.0.0"
+              }
+            }
+          ],
+          [
+            {
+              "termCodes": [
+                {
+                  "code": "E11.9",
+                  "display": "Diabetes mellitus, Typ 2: Ohne Komplikationen",
+                  "system": "http://fhir.de/CodeSystem/bfarm/icd-10-gm",
+                  "version": "2026"
+                }
+              ],
+              "context": {
+                "code": "Diagnose",
+                "display": "Diagnose",
+                "system": "fdpg.mii.cds",
+                "version": "1.0.0"
+              }
+            }
+          ]
+        ]
+      }
+    ]
+  ]
+}

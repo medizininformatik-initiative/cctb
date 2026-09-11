@@ -1,0 +1,125 @@
+{
+  "version": "3",
+  "display": "Example-Any-Chain-Three-Hops (DRAFT)",
+  "inclusionCriteria": [
+    [
+      {
+        "id": "anchor-sepsis-episode",
+        "anchorOccurrence": "any",
+        "anchorPoint": "start",
+        "criteria": [
+          [
+            {
+              "context": {
+                "code": "Diagnose",
+                "display": "Diagnose",
+                "system": "fdpg.mii.cds",
+                "version": "1.0.0"
+              },
+              "termCodes": [
+                {
+                  "code": "A41.5",
+                  "display": "Sepsis durch sonstige gramnegative Erreger",
+                  "system": "http://fhir.de/CodeSystem/bfarm/icd-10-gm"
+                }
+              ]
+            }
+          ]
+        ]
+      },
+      {
+        "id": "group-aki-after-sepsis",
+        "anchorOccurrence": "any",
+        "anchorPoint": "start",
+        "relativeTimeRestrictions": [
+          {
+            "anchorRef": "anchor-sepsis-episode",
+            "minOffset": "P0D",
+            "maxOffset": "P7D"
+          }
+        ],
+        "criteria": [
+          [
+            {
+              "context": {
+                "code": "Diagnose",
+                "display": "Diagnose",
+                "system": "fdpg.mii.cds",
+                "version": "1.0.0"
+              },
+              "termCodes": [
+                {
+                  "code": "N17.0",
+                  "display": "Akutes Nierenversagen mit Tubulusnekrose",
+                  "system": "http://fhir.de/CodeSystem/bfarm/icd-10-gm"
+                }
+              ]
+            }
+          ]
+        ]
+      },
+      {
+        "id": "group-dialysis-after-aki",
+        "anchorOccurrence": "any",
+        "anchorPoint": "start",
+        "relativeTimeRestrictions": [
+          {
+            "anchorRef": "group-aki-after-sepsis",
+            "minOffset": "P0D",
+            "maxOffset": "P14D"
+          }
+        ],
+        "criteria": [
+          [
+            {
+              "context": {
+                "code": "Procedure",
+                "display": "Prozedur",
+                "system": "fdpg.mii.cds",
+                "version": "1.0.0"
+              },
+              "termCodes": [
+                {
+                  "code": "8-85a.0",
+                  "display": "Dialyseverfahren wegen mangelnder Funktionsaufnahme des Transplantats",
+                  "system": "http://fhir.de/CodeSystem/bfarm/ops",
+                  "version": "2026"
+                }
+              ]
+            }
+          ]
+        ]
+      },
+      {
+        "id": "group-hemoglobin-after-dialysis",
+        "relativeTimeRestrictions": [
+          {
+            "anchorRef": "group-dialysis-after-aki",
+            "minOffset": "P0D",
+            "maxOffset": "P1D"
+          }
+        ],
+        "criteria": [
+          [
+            {
+              "context": {
+                "code": "Laboruntersuchung",
+                "display": "Laboruntersuchung",
+                "system": "fdpg.mii.cds",
+                "version": "1.0.0"
+              },
+              "termCodes": [
+                {
+                  "code": "718-7",
+                  "display": "Hemoglobin [Mass/volume] in Blood",
+                  "system": "http://loinc.org",
+                  "version": "2.81"
+                }
+              ]
+            }
+          ]
+        ]
+      }
+    ]
+  ]
+}

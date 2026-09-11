@@ -1,0 +1,460 @@
+{
+  "version": "3",
+  "display": "Example-All-Features (DRAFT)",
+  "inclusionCriteria": [
+    [
+      {
+        "id": "group-demographics",
+        "criteria": [
+          [
+            {
+              "context": {
+                "code": "Patient",
+                "display": "Patient",
+                "system": "fdpg.mii.cds",
+                "version": "1.0.0"
+              },
+              "termCodes": [
+                {
+                  "code": "263495000",
+                  "display": "Geschlecht",
+                  "system": "http://snomed.info/sct"
+                }
+              ],
+              "valueFilter": {
+                "type": "concept",
+                "selectedConcepts": [
+                  {
+                    "code": "female",
+                    "display": "Female",
+                    "system": "http://hl7.org/fhir/administrative-gender"
+                  },
+                  {
+                    "code": "male",
+                    "display": "Male",
+                    "system": "http://hl7.org/fhir/administrative-gender"
+                  }
+                ]
+              }
+            }
+          ],
+          [
+            {
+              "context": {
+                "code": "Patient",
+                "display": "Patient",
+                "system": "fdpg.mii.cds",
+                "version": "1.0.0"
+              },
+              "termCodes": [
+                {
+                  "code": "424144002",
+                  "display": "Gegenwärtiges chronologisches Alter",
+                  "system": "http://snomed.info/sct"
+                }
+              ],
+              "valueFilter": {
+                "type": "quantity-comparator",
+                "comparator": "ge",
+                "value": 18,
+                "unit": {
+                  "code": "a",
+                  "display": "Jahr"
+                }
+              }
+            }
+          ]
+        ]
+      },
+      {
+        "id": "anchor-colon-diverticular-disease",
+        "anchorOccurrence": "last",
+        "anchorPoint": "start",
+        "criteria": [
+          [
+            {
+              "context": {
+                "code": "Diagnose",
+                "display": "Diagnose",
+                "system": "fdpg.mii.cds",
+                "version": "1.0.0"
+              },
+              "termCodes": [
+                {
+                  "code": "K57.3",
+                  "display": "Divertikelkrankheit des Dickdarmes ohne Perforation oder Abszess",
+                  "system": "http://fhir.de/CodeSystem/bfarm/icd-10-gm"
+                }
+              ]
+            }
+          ]
+        ]
+      },
+      {
+        "id": "anchor-resection-with-transfusion",
+        "anchorOccurrence": "first",
+        "anchorPoint": "end",
+        "criteria": [
+          [
+            {
+              "context": {
+                "code": "Procedure",
+                "display": "Prozedur",
+                "system": "fdpg.mii.cds",
+                "version": "1.0.0"
+              },
+              "termCodes": [
+                {
+                  "code": "5-455.3",
+                  "display": "Partielle Resektion des Dickdarmes: Zäkumresektion",
+                  "system": "http://fhir.de/CodeSystem/bfarm/ops",
+                  "version": "2026"
+                }
+              ]
+            }
+          ],
+          [
+            {
+              "context": {
+                "code": "Procedure",
+                "display": "Prozedur",
+                "system": "fdpg.mii.cds",
+                "version": "1.0.0"
+              },
+              "termCodes": [
+                {
+                  "code": "8-805.0",
+                  "display": "Transfusion von peripher gewonnenen hämatopoetischen Stammzellen",
+                  "system": "http://fhir.de/CodeSystem/bfarm/ops",
+                  "version": "2026"
+                }
+              ]
+            }
+          ]
+        ]
+      },
+      {
+        "id": "group-hemoglobin-between-diagnosis-and-resection",
+        "relativeTimeRestrictions": [
+          {
+            "anchorRef": "anchor-colon-diverticular-disease",
+            "minOffset": "P0D"
+          },
+          {
+            "anchorRef": "anchor-resection-with-transfusion",
+            "maxOffset": "P0D"
+          }
+        ],
+        "criteria": [
+          [
+            {
+              "context": {
+                "code": "Laboruntersuchung",
+                "display": "Laboruntersuchung",
+                "system": "fdpg.mii.cds",
+                "version": "1.0.0"
+              },
+              "termCodes": [
+                {
+                  "code": "718-7",
+                  "display": "Hemoglobin [Mass/volume] in Blood",
+                  "system": "http://loinc.org",
+                  "version": "2.81"
+                }
+              ],
+              "timeRestriction": {
+                "afterDate": "2020-01-01",
+                "beforeDate": "2026-12-31"
+              }
+            }
+          ]
+        ]
+      },
+      {
+        "id": "group-sepsis-after-resection",
+        "anchorOccurrence": "any",
+        "anchorPoint": "start",
+        "relativeTimeRestrictions": [
+          {
+            "anchorRef": "anchor-resection-with-transfusion",
+            "minOffset": "P0D",
+            "maxOffset": "P30D"
+          }
+        ],
+        "criteria": [
+          [
+            {
+              "context": {
+                "code": "Diagnose",
+                "display": "Diagnose",
+                "system": "fdpg.mii.cds",
+                "version": "1.0.0"
+              },
+              "termCodes": [
+                {
+                  "code": "A41.5",
+                  "display": "Sepsis durch sonstige gramnegative Erreger",
+                  "system": "http://fhir.de/CodeSystem/bfarm/icd-10-gm"
+                }
+              ]
+            }
+          ]
+        ]
+      },
+      {
+        "id": "group-aki-after-sepsis",
+        "anchorOccurrence": "any",
+        "anchorPoint": "start",
+        "relativeTimeRestrictions": [
+          {
+            "anchorRef": "group-sepsis-after-resection",
+            "minOffset": "P0D",
+            "maxOffset": "P7D"
+          }
+        ],
+        "criteria": [
+          [
+            {
+              "context": {
+                "code": "Diagnose",
+                "display": "Diagnose",
+                "system": "fdpg.mii.cds",
+                "version": "1.0.0"
+              },
+              "termCodes": [
+                {
+                  "code": "N17.0",
+                  "display": "Akutes Nierenversagen mit Tubulusnekrose",
+                  "system": "http://fhir.de/CodeSystem/bfarm/icd-10-gm"
+                }
+              ]
+            }
+          ]
+        ]
+      },
+      {
+        "id": "group-dialysis-after-aki",
+        "relativeTimeRestrictions": [
+          {
+            "anchorRef": "group-aki-after-sepsis",
+            "minOffset": "P0D",
+            "maxOffset": "P14D"
+          }
+        ],
+        "criteria": [
+          [
+            {
+              "context": {
+                "code": "Procedure",
+                "display": "Prozedur",
+                "system": "fdpg.mii.cds",
+                "version": "1.0.0"
+              },
+              "termCodes": [
+                {
+                  "code": "8-85a.0",
+                  "display": "Dialyseverfahren wegen mangelnder Funktionsaufnahme des Transplantats",
+                  "system": "http://fhir.de/CodeSystem/bfarm/ops",
+                  "version": "2026"
+                }
+              ]
+            }
+          ]
+        ]
+      },
+      {
+        "id": "group-crp-after-sepsis",
+        "relativeTimeRestrictions": [
+          {
+            "anchorRef": "group-sepsis-after-resection",
+            "minOffset": "P0D",
+            "maxOffset": "P3D"
+          }
+        ],
+        "criteria": [
+          [
+            {
+              "context": {
+                "code": "Laboruntersuchung",
+                "display": "Laboruntersuchung",
+                "system": "fdpg.mii.cds",
+                "version": "1.0.0"
+              },
+              "termCodes": [
+                {
+                  "code": "1988-5",
+                  "display": "C-reaktives Protein",
+                  "system": "http://loinc.org"
+                }
+              ]
+            }
+          ]
+        ]
+      }
+    ],
+    [
+      {
+        "id": "anchor-now",
+        "criteria": [
+          [
+            {
+              "type": "now"
+            }
+          ]
+        ]
+      },
+      {
+        "id": "group-colon-biopsy-specimen",
+        "criteria": [
+          [
+            {
+              "context": {
+                "code": "Specimen",
+                "display": "Bioprobe",
+                "system": "fdpg.mii.cds",
+                "version": "1.0.0"
+              },
+              "termCodes": [
+                {
+                  "code": "16213411000119100",
+                  "display": "Ascending colon biopsy specimen",
+                  "system": "http://snomed.info/sct"
+                }
+              ],
+              "attributeFilters": [
+                {
+                  "type": "reference",
+                  "attributeCode": {
+                    "code": "festgestellteDiagnose",
+                    "display": "festgestellteDiagnose",
+                    "system": "http://hl7.org/fhir/StructureDefinition"
+                  },
+                  "criteria": [
+                    {
+                      "context": {
+                        "code": "Diagnose",
+                        "display": "Diagnose",
+                        "system": "fdpg.mii.cds",
+                        "version": "1.0.0"
+                      },
+                      "termCodes": [
+                        {
+                          "code": "K57.3",
+                          "display": "Divertikelkrankheit des Dickdarmes ohne Perforation oder Abszess",
+                          "system": "http://fhir.de/CodeSystem/bfarm/icd-10-gm"
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        ]
+      },
+      {
+        "id": "group-followup-lab-since-resection",
+        "relativeTimeRestrictions": [
+          {
+            "anchorRef": "anchor-resection-with-transfusion",
+            "minOffset": "P0D"
+          },
+          {
+            "anchorRef": "anchor-now",
+            "maxOffset": "P0D"
+          }
+        ],
+        "criteria": [
+          [
+            {
+              "context": {
+                "code": "Laboruntersuchung",
+                "display": "Laboruntersuchung",
+                "system": "fdpg.mii.cds",
+                "version": "1.0.0"
+              },
+              "termCodes": [
+                {
+                  "code": "718-7",
+                  "display": "Hemoglobin [Mass/volume] in Blood",
+                  "system": "http://loinc.org",
+                  "version": "2.81"
+                }
+              ]
+            }
+          ]
+        ]
+      }
+    ]
+  ],
+  "exclusionCriteria": [
+    [
+      {
+        "id": "group-excl-anticoagulant-around-resection",
+        "relativeTimeRestrictions": [
+          {
+            "anchorRef": "anchor-resection-with-transfusion",
+            "minOffset": "-P2D",
+            "maxOffset": "P2D"
+          }
+        ],
+        "criteria": [
+          [
+            {
+              "context": {
+                "code": "Medikamentenverordnung",
+                "display": "Verordnung von Medikamenten",
+                "system": "fdpg.mii.cds",
+                "version": "1.0.0"
+              },
+              "termCodes": [
+                {
+                  "code": "B01AA04",
+                  "display": "Phenprocoumon",
+                  "system": "http://fhir.de/CodeSystem/bfarm/atc"
+                }
+              ]
+            }
+          ]
+        ]
+      },
+      {
+        "id": "group-excl-organ-failure",
+        "criteria": [
+          [
+            {
+              "context": {
+                "code": "Diagnose",
+                "display": "Diagnose",
+                "system": "fdpg.mii.cds",
+                "version": "1.0.0"
+              },
+              "termCodes": [
+                {
+                  "code": "N18.8",
+                  "display": "Sonstige chronische Nierenkrankheit",
+                  "system": "http://fhir.de/CodeSystem/bfarm/icd-10-gm"
+                }
+              ]
+            },
+            {
+              "context": {
+                "code": "Diagnose",
+                "display": "Diagnose",
+                "system": "fdpg.mii.cds",
+                "version": "1.0.0"
+              },
+              "termCodes": [
+                {
+                  "code": "K72",
+                  "display": "Leberversagen, anderenorts nicht klassifiziert",
+                  "system": "http://fhir.de/CodeSystem/bfarm/icd-10-gm"
+                }
+              ]
+            }
+          ]
+        ]
+      }
+    ]
+  ]
+}

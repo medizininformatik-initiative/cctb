@@ -1,0 +1,90 @@
+{
+  "version": "3",
+  "display": "Example-Hemoglobin-Between-Diagnosis-And-Resection (DRAFT)",
+  "inclusionCriteria": [
+    [
+      {
+        "id": "anchor-colon-diverticular-disease",
+        "anchorOccurrence": "first",
+        "anchorPoint": "start",
+        "criteria": [
+          [
+            {
+              "context": {
+                "code": "Diagnose",
+                "display": "Diagnose",
+                "system": "fdpg.mii.cds",
+                "version": "1.0.0"
+              },
+              "termCodes": [
+                {
+                  "code": "K57.3",
+                  "display": "Divertikelkrankheit des Dickdarmes ohne Perforation oder Abszess",
+                  "system": "http://fhir.de/CodeSystem/bfarm/icd-10-gm"
+                }
+              ]
+            }
+          ]
+        ]
+      },
+      {
+        "id": "anchor-colon-resection",
+        "anchorOccurrence": "first",
+        "anchorPoint": "start",
+        "criteria": [
+          [
+            {
+              "context": {
+                "code": "Procedure",
+                "display": "Prozedur",
+                "system": "fdpg.mii.cds",
+                "version": "1.0.0"
+              },
+              "termCodes": [
+                {
+                  "code": "5-455.3",
+                  "display": "Partielle Resektion des Dickdarmes: Zäkumresektion",
+                  "system": "http://fhir.de/CodeSystem/bfarm/ops",
+                  "version": "2026"
+                }
+              ]
+            }
+          ]
+        ]
+      },
+      {
+        "id": "group-hemoglobin-between-diagnosis-and-resection",
+        "relativeTimeRestrictions": [
+          {
+            "anchorRef": "anchor-colon-diverticular-disease",
+            "minOffset": "P0D"
+          },
+          {
+            "anchorRef": "anchor-colon-resection",
+            "maxOffset": "P0D"
+          }
+        ],
+        "criteria": [
+          [
+            {
+              "context": {
+                "code": "Laboruntersuchung",
+                "display": "Laboruntersuchung",
+                "system": "fdpg.mii.cds",
+                "version": "1.0.0"
+              },
+              "termCodes": [
+                {
+                  "code": "718-7",
+                  "display": "Hemoglobin [Mass/volume] in Blood",
+                  "system": "http://loinc.org",
+                  "version": "2.81"
+                }
+              ]
+            }
+          ]
+        ]
+      }
+    ]
+  ]
+}
