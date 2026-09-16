@@ -1,0 +1,62 @@
+{
+  "version": "3",
+  "display": "Example-Hemoglobin-Within-24h-After-Procedure (DRAFT)",
+  "inclusionCriteria": [
+    [
+      {
+        "id": "anchor-procedure",
+        "anchorOccurrence": "first",
+        "criteria": [
+          [
+            {
+              "termCodes": [
+                {
+                  "code": "5-470.1",
+                  "display": "Appendektomie: Laparoskopisch",
+                  "system": "http://fhir.de/CodeSystem/bfarm/ops",
+                  "version": "2026"
+                }
+              ],
+              "context": {
+                "code": "Procedure",
+                "display": "Prozedur",
+                "system": "fdpg.mii.cds",
+                "version": "1.0.0"
+              }
+            }
+          ]
+        ]
+      },
+      {
+        "id": "group-hemoglobin-after-procedure",
+        "relativeTimeRestrictions": [
+          {
+            "anchorRef": "anchor-procedure",
+            "minOffset": "PT0H",
+            "maxOffset": "PT24H"
+          }
+        ],
+        "criteria": [
+          [
+            {
+              "termCodes": [
+                {
+                  "code": "718-7",
+                  "display": "Hemoglobin [Mass/volume] in Blood",
+                  "system": "http://loinc.org",
+                  "version": "2.81"
+                }
+              ],
+              "context": {
+                "code": "Laboruntersuchung",
+                "display": "Laboruntersuchung",
+                "system": "fdpg.mii.cds",
+                "version": "1.0.0"
+              }
+            }
+          ]
+        ]
+      }
+    ]
+  ]
+}

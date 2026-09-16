@@ -235,6 +235,41 @@ public class WorkedExampleIT {
     }
 
     /**
+     * The minimal anchor on a clinical event: a haemoglobin in the 24 hours after the first appendectomy. One
+     * single-clause anchor, one dependent, one one-sided-in-practice window, nothing else.
+     * <p>
+     * {@code before} is the discriminator. Its haemoglobin sits a day <em>ahead</em> of the procedure, so it
+     * matches under a symmetric window and must not match under this one - which is the difference between this
+     * example and {@link #multiClauseAnchor()}, whose window is {@code -PT24H..PT24H}. {@code next-day} pins the
+     * other surprise: offsets are applied at the anchor's precision, so {@code PT24H} reaches the following
+     * <em>date</em> rather than 24 clock hours.
+     */
+    @Test
+    public void hemoglobin24hAfterProcedure() throws Exception {
+        var b = bundle();
+        patient(b, "same-day");
+        procedure(b, "same-day-op", "same-day", "5-470.1", "2024-01-10");
+        observation(b, "same-day-hb", "same-day", LOINC, "718-7", "2024-01-10");
+
+        patient(b, "next-day");
+        procedure(b, "next-day-op", "next-day", "5-470.1", "2024-01-10");
+        observation(b, "next-day-hb", "next-day", LOINC, "718-7", "2024-01-11");
+
+        patient(b, "before");
+        procedure(b, "before-op", "before", "5-470.1", "2024-01-10");
+        observation(b, "before-hb", "before", LOINC, "718-7", "2024-01-09");
+
+        patient(b, "too-late");
+        procedure(b, "too-late-op", "too-late", "5-470.1", "2024-01-10");
+        observation(b, "too-late-hb", "too-late", LOINC, "718-7", "2024-01-13");
+
+        patient(b, "no-procedure");
+        observation(b, "no-procedure-hb", "no-procedure", LOINC, "718-7", "2024-01-10");
+
+        assertIncludes("ccdl-example-hemoglobin-24h-after-procedure.json", b, "same-day", "next-day");
+    }
+
+    /**
      * "Between event A and event B": a haemoglobin inside the window the two anchors intersect out. The third
      * patient is the one that matters - their resection precedes their diagnosis, so the window inverts, which
      * must exclude them rather than fail the evaluation.
@@ -296,7 +331,7 @@ public class WorkedExampleIT {
      * must drop out rather than fail the evaluation.
      */
     @Test
-    public void hemoglobinAfterProcedure() throws Exception {
+    public void multiClauseAnchor() throws Exception {
         var b = bundle();
         patient(b, "first-path", "female", "1960-01-01");
         procedure(b, "first-path-p1", "first-path", "5-470.1", "2024-01-10");
@@ -320,7 +355,7 @@ public class WorkedExampleIT {
         observation(b, "no-procedure-hb", "no-procedure", LOINC, "718-7", "2024-04-01");
         condition(b, "no-procedure-dx", "no-procedure", ICD, "E10.9", "2024-04-01");
 
-        assertIncludes("ccdl-example-hemoglobin-after-procedure.json", b, "first-path", "second-path");
+        assertIncludes("ccdl-example-multi-clause-anchor.json", b, "first-path", "second-path");
     }
 
     /**
